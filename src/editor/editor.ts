@@ -100,8 +100,8 @@ const CUSTOM_FIELDS: [keyof PaletteColors, string][] = [
 const clean = <T extends Record<string, any>>(obj: T): T =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== "" && v !== null)) as T;
 
-@customElement("hearth-dashboard-card-editor")
-export class HearthDashboardEditor extends LitElement {
+@customElement("yad-card-editor")
+export class YadEditor extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   @state() private _config?: DashboardConfig;
   @state() private _selected?: number;
@@ -248,7 +248,7 @@ export class HearthDashboardEditor extends LitElement {
               <div class="sub-title">${mode === "light" ? "Light mode colours" : "Dark mode colours"}</div>
               <div class="pickers">
                 ${CUSTOM_FIELDS.map(
-                  ([key, label]) => html`<hearth-color-picker
+                  ([key, label]) => html`<yad-color-picker
                     .label=${label}
                     .value=${config.custom_palette?.[mode]?.[key]}
                     .placeholder=${PALETTES.hearth[mode][key]}
@@ -256,7 +256,7 @@ export class HearthDashboardEditor extends LitElement {
                       e.stopPropagation();
                       this._setCustomColor(mode, key, e.detail.value);
                     }}
-                  ></hearth-color-picker>`,
+                  ></yad-color-picker>`,
                 )}
               </div>
             </div>`,
@@ -264,14 +264,14 @@ export class HearthDashboardEditor extends LitElement {
         : nothing}
 
       <div class="sub-title">Accent override (optional)</div>
-      <hearth-color-picker
+      <yad-color-picker
         .label=${"Accent colour — applies to any palette"}
         .value=${config.accent_color}
         @value-changed=${(e: CustomEvent) => {
           e.stopPropagation();
           this._set({ accent_color: e.detail.value });
         }}
-      ></hearth-color-picker>
+      ></yad-color-picker>
     </div>`;
   }
 
@@ -344,8 +344,8 @@ export class HearthDashboardEditor extends LitElement {
           : html`<button class="add" @click=${() => (this._adding = true)}><ha-icon icon="mdi:plus"></ha-icon>Add widget</button>`}
       </div>
       <div class="footer">
-        Hearth Dashboard v${VERSION} ·
-        <a href="https://github.com/therealcarnivor/HA-Dashboard/releases" target="_blank" rel="noreferrer">Release notes</a>
+        YAD v${VERSION} ·
+        <a href="https://github.com/therealcarnivor/YAD-Dashboard/releases" target="_blank" rel="noreferrer">Release notes</a>
       </div>
     `;
   }

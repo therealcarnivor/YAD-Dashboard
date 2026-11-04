@@ -2,12 +2,12 @@ import { css } from "lit";
 
 /** Palette tokens. Widgets only ever reference the --h-* variables. */
 export const themeStyles = css`
-  .hearth {
+  .yad {
     --h-radius: 26px;
     --h-radius-sm: 16px;
-    --h-font: var(--hearth-font, "Nunito", "Quicksand", "Segoe UI Variable", var(--ha-font-family-body, Roboto), system-ui, sans-serif);
+    --h-font: var(--yad-font, var(--hearth-font, "Nunito", "Quicksand", "Segoe UI Variable", var(--ha-font-family-body, Roboto), system-ui, sans-serif));
   }
-  .hearth.ha {
+  .yad.ha {
     --h-bg: var(--primary-background-color);
     --h-bg-2: var(--secondary-background-color);
     --h-surface: var(--ha-card-background, var(--card-background-color));

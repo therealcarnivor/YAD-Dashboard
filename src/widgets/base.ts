@@ -2,7 +2,7 @@ import { LitElement, PropertyValues } from "lit";
 import { property } from "lit/decorators.js";
 import type { HomeAssistant, WidgetConfig } from "../types";
 
-export abstract class HearthWidget<C extends WidgetConfig = WidgetConfig> extends LitElement {
+export abstract class YadWidget<C extends WidgetConfig = WidgetConfig> extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   @property({ attribute: false }) public config!: C;
   @property({ type: Boolean, reflect: true, attribute: "display-only" }) public displayOnly = false;

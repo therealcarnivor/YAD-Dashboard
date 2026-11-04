@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { WidgetConfig } from "../types";
 import { capitalise, entityName, formatNumber, isUnavailable, openMoreInfo } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface ClimateConfig extends WidgetConfig {
   type: "climate";
@@ -33,8 +33,8 @@ const ACTION_TEXT: Record<string, string> = {
   preheating: "Preheating",
 };
 
-@customElement("hearth-widget-climate")
-export class HearthClimate extends HearthWidget<ClimateConfig> {
+@customElement("yad-widget-climate")
+export class YadClimate extends YadWidget<ClimateConfig> {
   @state() private _pendingTarget?: number;
   private _debounce?: number;
 

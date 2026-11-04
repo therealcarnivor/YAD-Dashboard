@@ -3,7 +3,7 @@ import { customElement } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { WidgetConfig } from "../types";
 import { entityName, isUnavailable, openMoreInfo } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface MediaConfig extends WidgetConfig {
   type: "media";
@@ -17,8 +17,8 @@ const SUPPORT_PREVIOUS = 16;
 const SUPPORT_NEXT = 32;
 const SUPPORT_VOLUME_SET = 4;
 
-@customElement("hearth-widget-media")
-export class HearthMedia extends HearthWidget<MediaConfig> {
+@customElement("yad-widget-media")
+export class YadMedia extends YadWidget<MediaConfig> {
   protected watchedEntities(): string[] {
     return [this.config.entity];
   }

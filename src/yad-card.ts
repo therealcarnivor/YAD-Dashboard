@@ -12,8 +12,9 @@ import "./editor/editor";
 
 import { VERSION } from "./version";
 
-export const CARD_TAG = "hearth-dashboard-card";
-export const EDITOR_TAG = "hearth-dashboard-card-editor";
+export const CARD_TAG = "yad-card";
+export const EDITOR_TAG = "yad-card-editor";
+const LEGACY_CARD_TAG = "hearth-dashboard-card";
 
 const DEFAULTS = {
   theme: "auto",
@@ -30,7 +31,7 @@ const DEFAULTS = {
 } as const;
 
 @customElement(CARD_TAG)
-export class HearthDashboardCard extends LitElement {
+export class YadCard extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   /** Set by Home Assistant when rendered inside the card editor preview. */
   @property({ type: Boolean }) public preview = false;
@@ -212,7 +213,7 @@ export class HearthDashboardCard extends LitElement {
     return html`
       <div
         class=${classMap({
-          hearth: true,
+          yad: true,
           [themeClass]: true,
           portrait,
           landscape: !portrait,
@@ -241,7 +242,7 @@ export class HearthDashboardCard extends LitElement {
       :host {
         display: block;
       }
-      .hearth {
+      .yad {
         position: relative;
         box-sizing: border-box;
         width: 100%;
@@ -251,10 +252,10 @@ export class HearthDashboardCard extends LitElement {
         overflow: hidden;
         -webkit-font-smoothing: antialiased;
       }
-      .hearth.has-bg {
+      .yad.has-bg {
         background: var(--h-bg-image) center / cover no-repeat, var(--h-bg);
       }
-      .hearth.has-bg .tile:not(.transparent) {
+      .yad.has-bg .tile:not(.transparent) {
         backdrop-filter: blur(18px) saturate(1.2);
         -webkit-backdrop-filter: blur(18px) saturate(1.2);
       }
@@ -340,13 +341,18 @@ export class HearthDashboardCard extends LitElement {
   ];
 }
 
+// The card was called Hearth Dashboard before v0.3.0; keep old configs rendering.
+if (!customElements.get(LEGACY_CARD_TAG)) {
+  customElements.define(LEGACY_CARD_TAG, class extends YadCard {});
+}
+
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: CARD_TAG,
-  name: "Hearth Dashboard",
+  name: "YAD – Yet Another Dashboard",
   description: "A modular, widget-based home dashboard for wall tablets and kiosks.",
   preview: false,
-  documentationURL: "https://github.com/therealcarnivor/HA-Dashboard",
+  documentationURL: "https://github.com/therealcarnivor/YAD-Dashboard",
 });
 
-console.info(`%c HEARTH-DASHBOARD %c ${VERSION} `, "color:#fff;background:#d4774f;font-weight:700;border-radius:4px 0 0 4px", "color:#d4774f;background:#f3eee7;border-radius:0 4px 4px 0");
+console.info(`%c YAD %c ${VERSION} `, "color:#fff;background:#d4774f;font-weight:700;border-radius:4px 0 0 4px", "color:#d4774f;background:#f3eee7;border-radius:0 4px 4px 0");

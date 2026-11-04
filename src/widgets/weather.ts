@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { WidgetConfig } from "../types";
 import { capitalise, formatNumber, formatState, isUnavailable, lang, openMoreInfo } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface WeatherConfig extends WidgetConfig {
   type: "weather";
@@ -58,8 +58,8 @@ const iconFor = (condition?: string, night = false): string => {
 const toneFor = (condition?: string): string =>
   condition === "sunny" ? "sun" : condition === "clear-night" ? "night" : /rain|pour|hail|lightning/.test(condition ?? "") ? "rain" : "cloud";
 
-@customElement("hearth-widget-weather")
-export class HearthWeather extends HearthWidget<WeatherConfig> {
+@customElement("yad-widget-weather")
+export class YadWeather extends YadWidget<WeatherConfig> {
   @state() private _forecast?: Forecast[];
   private _unsub?: Promise<() => void>;
   private _subscribedKey?: string;

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Hearth Dashboard are documented here.
+All notable changes to YAD are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
 Add new entries under **Unreleased** as you work — they're moved under the new version number automatically when a release is cut.
@@ -10,6 +10,12 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 ### Added
 
 - Screenshots and a release badge in the README.
+
+### Changed
+
+- **Renamed to YAD (Yet Another Dashboard).** The card type is now `custom:yad-card` and the bundle is `yad.js`. The repository moves to `therealcarnivor/YAD-Dashboard`; GitHub redirects the old URL.
+- Existing `custom:hearth-dashboard-card` configs keep working, but if you added the resource by hand, change its URL to `/hacsfiles/YAD-Dashboard/yad.js` (HACS) or `/local/yad.js` (manual install).
+- The CSS font override variable is now `--yad-font` (`--hearth-font` still works).
 
 ## [0.2.1] - 2026-11-04
 
@@ -42,7 +48,7 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 - Light, dark and Home Assistant theme modes with an accent colour override.
 - Visual editor for adding, ordering and configuring widgets.
 
-[Unreleased]: https://github.com/therealcarnivor/HA-Dashboard/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/therealcarnivor/HA-Dashboard/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/therealcarnivor/HA-Dashboard/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/therealcarnivor/HA-Dashboard/releases/tag/v0.1.0
+[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/therealcarnivor/YAD-Dashboard/releases/tag/v0.1.0

@@ -1,6 +1,6 @@
 {
-  "name": "Hearth Dashboard",
-  "filename": "hearth-dashboard.js",
+  "name": "YAD",
+  "filename": "yad.js",
   "render_readme": true,
   "homeassistant": "2024.4.0"
 }

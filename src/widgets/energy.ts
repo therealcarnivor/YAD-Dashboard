@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { HassEntity, WidgetConfig } from "../types";
 import { formatNumber, formatState, isUnavailable, numericState, openMoreInfo } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface EnergyConfig extends WidgetConfig {
   type: "energy";
@@ -30,8 +30,8 @@ const powerParts = (hass: any, stateObj?: HassEntity): [string, string] => {
   return [formatNumber(hass, n, unit === "W" ? 0 : 2), unit];
 };
 
-@customElement("hearth-widget-energy")
-export class HearthEnergy extends HearthWidget<EnergyConfig> {
+@customElement("yad-widget-energy")
+export class YadEnergy extends YadWidget<EnergyConfig> {
   @state() private _series?: number[];
   private _timer?: number;
   private _fetchedKey?: string;
@@ -131,12 +131,12 @@ export class HearthEnergy extends HearthWidget<EnergyConfig> {
     return svg`
       <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="spark">
         <defs>
-          <linearGradient id="hearth-energy-fill" x1="0" x2="0" y1="0" y2="1">
+          <linearGradient id="yad-energy-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stop-color="var(--h-accent)" stop-opacity="0.35"></stop>
             <stop offset="100%" stop-color="var(--h-accent)" stop-opacity="0"></stop>
           </linearGradient>
         </defs>
-        <path d="${d} L ${w} ${h} L 0 ${h} Z" fill="url(#hearth-energy-fill)"></path>
+        <path d="${d} L ${w} ${h} L 0 ${h} Z" fill="url(#yad-energy-fill)"></path>
         <path d=${d} fill="none" stroke="var(--h-accent)" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linecap="round"></path>
       </svg>`;
   }

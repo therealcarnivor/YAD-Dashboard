@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { WidgetConfig } from "../types";
 import { formatTime, lang, use12h } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface ClockConfig extends WidgetConfig {
   type: "clock";
@@ -20,8 +20,8 @@ export interface ClockConfig extends WidgetConfig {
 const greetingFor = (hour: number): string =>
   hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-@customElement("hearth-widget-clock")
-export class HearthClock extends HearthWidget<ClockConfig> {
+@customElement("yad-widget-clock")
+export class YadClock extends YadWidget<ClockConfig> {
   @state() private _now = new Date();
   private _timer?: number;
 

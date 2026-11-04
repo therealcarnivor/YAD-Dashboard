@@ -2,7 +2,7 @@
 // Runs automatically from `npm version <patch|minor|major>`; use `--check` in CI.
 import { readFileSync, writeFileSync } from "node:fs";
 
-const REPO = "https://github.com/therealcarnivor/HA-Dashboard";
+const REPO = "https://github.com/therealcarnivor/YAD-Dashboard";
 const { version } = JSON.parse(readFileSync("package.json", "utf8"));
 const check = process.argv.includes("--check");
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -3,7 +3,7 @@ import { customElement } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { EntityRef, WidgetConfig } from "../types";
 import { capitalise, entityName, normaliseEntities, openMoreInfo } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface PeopleConfig extends WidgetConfig {
   type: "people";
@@ -18,8 +18,8 @@ const initials = (name: string): string =>
     .map((p) => p.charAt(0).toUpperCase())
     .join("");
 
-@customElement("hearth-widget-people")
-export class HearthPeople extends HearthWidget<PeopleConfig> {
+@customElement("yad-widget-people")
+export class YadPeople extends YadWidget<PeopleConfig> {
   protected watchedEntities(): string[] {
     return normaliseEntities(this.config.entities).map((e) => e.entity);
   }

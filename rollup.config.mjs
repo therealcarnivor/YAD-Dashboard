@@ -9,8 +9,8 @@ const plugins = (minify, dev = false) => [
 ];
 
 const card = {
-  input: "src/hearth-dashboard-card.ts",
-  output: { file: "dist/hearth-dashboard.js", format: "es", inlineDynamicImports: true },
+  input: "src/yad-card.ts",
+  output: { file: "dist/yad.js", format: "es", inlineDynamicImports: true },
   plugins: plugins(true),
 };
 

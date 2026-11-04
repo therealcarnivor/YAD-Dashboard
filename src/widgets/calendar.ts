@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { EntityRef, WidgetConfig } from "../types";
 import { addDays, formatTime, normaliseEntities, parseDate, relativeDayLabel, startOfDay } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface CalendarConfig extends WidgetConfig {
   type: "calendar";
@@ -32,8 +32,8 @@ interface CalEvent {
 
 const PALETTE = ["var(--h-accent)", "var(--h-sage)", "var(--h-sky)", "var(--h-amber)", "#b07aa1", "#c9a27e"];
 
-@customElement("hearth-widget-calendar")
-export class HearthCalendar extends HearthWidget<CalendarConfig> {
+@customElement("yad-widget-calendar")
+export class YadCalendar extends YadWidget<CalendarConfig> {
   @state() private _events?: CalEvent[];
   @state() private _error?: string;
   private _timer?: number;

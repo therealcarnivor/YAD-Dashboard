@@ -1,6 +1,6 @@
 /* Local preview harness: mocks the bits of Home Assistant the card relies on. */
 import * as mdi from "@mdi/js";
-import "../src/hearth-dashboard-card";
+import "../src/yad-card";
 
 const iconPath = (name?: string): string => {
   if (!name) return "";
@@ -155,13 +155,13 @@ const hass: any = {
   },
 };
 
-const card = document.createElement("hearth-dashboard-card") as any;
+const card = document.createElement("yad-card") as any;
 const update = () => {
   card.hass = { ...hass, states: { ...states } };
 };
 
 card.setConfig({
-  type: "custom:hearth-dashboard-card",
+  type: "custom:yad-card",
   theme: params.get("theme") ?? "auto",
   orientation: params.get("orientation") ?? "auto",
   display_only: params.get("display_only") === "1",

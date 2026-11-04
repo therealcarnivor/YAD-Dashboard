@@ -2,7 +2,7 @@ import { css, html, PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { WidgetConfig } from "../types";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface CardWidgetConfig extends WidgetConfig {
   type: "card";
@@ -10,8 +10,8 @@ export interface CardWidgetConfig extends WidgetConfig {
 }
 
 /** Embeds any existing Lovelace card (built-in or custom) as a widget. */
-@customElement("hearth-widget-card")
-export class HearthCardWidget extends HearthWidget<CardWidgetConfig> {
+@customElement("yad-widget-card")
+export class YadCardWidget extends YadWidget<CardWidgetConfig> {
   @state() private _card?: HTMLElement & { hass?: unknown };
   @state() private _error?: string;
   private _builtFor?: string;

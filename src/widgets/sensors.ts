@@ -3,7 +3,7 @@ import { customElement } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { EntityRef, HomeAssistant, HassEntity, WidgetConfig } from "../types";
 import { entityName, formatNumber, isUnavailable, normaliseEntities, numericState, openMoreInfo } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface SensorsConfig extends WidgetConfig {
   type: "sensors";
@@ -22,8 +22,8 @@ const valueParts = (hass: HomeAssistant | undefined, s?: HassEntity): [string, s
   return [formatted, ""];
 };
 
-@customElement("hearth-widget-sensors")
-export class HearthSensors extends HearthWidget<SensorsConfig> {
+@customElement("yad-widget-sensors")
+export class YadSensors extends YadWidget<SensorsConfig> {
   protected watchedEntities(): string[] {
     return normaliseEntities(this.config.entities).map((e) => e.entity);
   }

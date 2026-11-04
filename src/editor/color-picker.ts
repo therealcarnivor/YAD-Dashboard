@@ -42,8 +42,8 @@ export const hsvToHex = ({ h, s, v }: Hsv): string => {
 };
 
 /** A compact colour field that expands into a hue/saturation wheel with a brightness slider. */
-@customElement("hearth-color-picker")
-export class HearthColorPicker extends LitElement {
+@customElement("yad-color-picker")
+export class YadColorPicker extends LitElement {
   @property() public label = "";
   @property() public value?: string;
   /** Shown (faded) when no value is set, e.g. the palette's own colour. */

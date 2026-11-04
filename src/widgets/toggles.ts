@@ -4,7 +4,7 @@ import { styleMap } from "lit/directives/style-map.js";
 import { widgetStyles } from "../styles";
 import type { EntityRef, HassEntity, WidgetConfig } from "../types";
 import { domainOf, entityName, formatNumber, formatState, isUnavailable, normaliseEntities, openMoreInfo, pressHandlers } from "../utils";
-import { HearthWidget } from "./base";
+import { YadWidget } from "./base";
 
 export interface TogglesConfig extends WidgetConfig {
   type: "toggles";
@@ -29,8 +29,8 @@ const subtitle = (hass: any, s?: HassEntity): string => {
   return formatState(hass, s);
 };
 
-@customElement("hearth-widget-toggles")
-export class HearthToggles extends HearthWidget<TogglesConfig> {
+@customElement("yad-widget-toggles")
+export class YadToggles extends YadWidget<TogglesConfig> {
   private _handlers = new Map<string, ReturnType<typeof pressHandlers>>();
 
   protected watchedEntities(): string[] {

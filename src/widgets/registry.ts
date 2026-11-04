@@ -47,7 +47,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   clock: {
     label: "Clock & greeting",
     icon: "mdi:clock-outline",
-    tag: "hearth-widget-clock",
+    tag: "yad-widget-clock",
     defaults: { col_span: 2, row_span: 1, transparent: true, greeting: true, greet_by_name: true },
     schema: [
       {
@@ -71,7 +71,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   weather: {
     label: "Weather & forecast",
     icon: "mdi:weather-partly-cloudy",
-    tag: "hearth-widget-weather",
+    tag: "yad-widget-weather",
     defaults: { col_span: 2, row_span: 2, forecast_type: "daily", forecast_count: 5 },
     schema: [
       entity("entity", "weather", true),
@@ -93,7 +93,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   calendar: {
     label: "Calendar agenda",
     icon: "mdi:calendar-month-outline",
-    tag: "hearth-widget-calendar",
+    tag: "yad-widget-calendar",
     defaults: { col_span: 1, row_span: 3, days: 7, max_events: 8 },
     schema: [
       text("title"),
@@ -108,7 +108,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   energy: {
     label: "Energy usage",
     icon: "mdi:lightning-bolt-outline",
-    tag: "hearth-widget-energy",
+    tag: "yad-widget-energy",
     defaults: { col_span: 2, row_span: 2, show_graph: true, hours_to_show: 24 },
     schema: [
       text("title"),
@@ -124,7 +124,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   climate: {
     label: "Climate / thermostat",
     icon: "mdi:thermostat",
-    tag: "hearth-widget-climate",
+    tag: "yad-widget-climate",
     defaults: { col_span: 1, row_span: 2, show_modes: true },
     schema: [
       entity("entity", "climate", true),
@@ -135,7 +135,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   toggles: {
     label: "Lights & switches",
     icon: "mdi:lightbulb-group-outline",
-    tag: "hearth-widget-toggles",
+    tag: "yad-widget-toggles",
     defaults: { col_span: 2, row_span: 1 },
     schema: [
       text("title"),
@@ -146,7 +146,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   sensors: {
     label: "Sensors",
     icon: "mdi:gauge",
-    tag: "hearth-widget-sensors",
+    tag: "yad-widget-sensors",
     defaults: { col_span: 2, row_span: 1, layout: "grid" },
     schema: [
       text("title"),
@@ -167,22 +167,22 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   media: {
     label: "Media player",
     icon: "mdi:music-circle-outline",
-    tag: "hearth-widget-media",
+    tag: "yad-widget-media",
     defaults: { col_span: 2, row_span: 1 },
     schema: [entity("entity", "media_player", true), { type: "grid", name: "", schema: [text("name"), bool("show_volume")] }],
   },
   people: {
     label: "People & presence",
     icon: "mdi:account-group-outline",
-    tag: "hearth-widget-people",
+    tag: "yad-widget-people",
     defaults: { col_span: 1, row_span: 1 },
     schema: [text("title"), entities("entities", "person"), bool("show_state")],
   },
   card: {
     label: "Any Home Assistant card",
     icon: "mdi:card-outline",
-    tag: "hearth-widget-card",
-    defaults: { col_span: 1, row_span: 1, card: { type: "markdown", content: "Hello from Hearth 👋" } },
+    tag: "yad-widget-card",
+    defaults: { col_span: 1, row_span: 1, card: { type: "markdown", content: "Hello from YAD 👋" } },
     schema: [],
   },
 };

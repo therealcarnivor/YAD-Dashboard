@@ -1,5 +1,5 @@
 {
-  "name": "hearth-dashboard",
+  "name": "yad-dashboard",
   "version": "0.2.1",
   "private": true,
   "description": "A modular, widget-based, kiosk-friendly Home Assistant dashboard card (HACS).",
@@ -14,12 +14,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/therealcarnivor/HA-Dashboard.git"
+    "url": "git+https://github.com/therealcarnivor/YAD-Dashboard.git"
   },
   "bugs": {
-    "url": "https://github.com/therealcarnivor/HA-Dashboard/issues"
+    "url": "https://github.com/therealcarnivor/YAD-Dashboard/issues"
   },
-  "homepage": "https://github.com/therealcarnivor/HA-Dashboard#readme",
+  "homepage": "https://github.com/therealcarnivor/YAD-Dashboard#readme",
   "keywords": [
     "home-assistant",
     "hacs",

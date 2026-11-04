@@ -72,6 +72,6 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: release-notes.md
-          files: dist/hearth-dashboard.js
+          files: dist/yad.js
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           fail_on_unmatched_files: true
