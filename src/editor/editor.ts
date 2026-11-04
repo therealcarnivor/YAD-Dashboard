@@ -1,61 +1,62 @@
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { PALETTES, type PaletteColors } from "../palettes";
+import { SCREENS } from "../screens";
 import type { DashboardConfig, HomeAssistant, WidgetConfig, WidgetType } from "../types";
 import { fireEvent } from "../utils";
 import { LABELS, LAYOUT_SCHEMA, WIDGETS } from "../widgets/registry";
+import "./color-picker";
 
-const GENERAL_SCHEMA = [
-  {
-    type: "grid",
-    name: "",
-    schema: [
-      {
-        name: "theme",
-        selector: {
-          select: {
-            mode: "dropdown",
-            options: [
-              { value: "auto", label: "Auto (follow HA light/dark)" },
-              { value: "light", label: "Hearth light" },
-              { value: "dark", label: "Hearth dark" },
-              { value: "ha", label: "Use my HA theme" },
-            ],
-          },
-        },
-      },
-      {
-        name: "orientation",
-        selector: {
-          select: {
-            mode: "dropdown",
-            options: [
-              { value: "auto", label: "Auto (detect)" },
-              { value: "landscape", label: "Landscape" },
-              { value: "portrait", label: "Portrait" },
-            ],
-          },
-        },
-      },
-      { name: "columns", selector: { number: { min: 1, max: 12, mode: "box" } } },
-      { name: "portrait_columns", selector: { number: { min: 1, max: 12, mode: "box" } } },
-      {
-        name: "height",
-        selector: {
-          select: {
-            mode: "dropdown",
-            custom_value: true,
-            options: [
-              { value: "screen", label: "Fill the screen" },
-              { value: "auto", label: "Fixed row height (scrolls)" },
-            ],
-          },
-        },
-      },
-      { name: "row_height", selector: { number: { min: 60, max: 600, step: 10, mode: "box", unit_of_measurement: "px" } } },
-      { name: "gap", selector: { number: { min: 0, max: 48, mode: "box", unit_of_measurement: "px" } } },
-      { name: "accent_color", selector: { text: {} } },
-    ],
-  },
+const select = (name: string, options: [string, string][], custom = false) => ({
+  name,
+  selector: { select: { mode: "dropdown", custom_value: custom, options: options.map(([value, label]) => ({ value, label })) } },
+});
+const number = (name: string, min: number, max: number, unit?: string, step = 1) => ({
+  name,
+  selector: { number: { min, max, step, mode: "box", ...(unit ? { unit_of_measurement: unit } : {}) } },
+});
+
+const generalSchema = (config: DashboardConfig) => {
+  const screen = config.screen ?? "fill";
+  return [
+    {
+      type: "grid",
+      name: "",
+      schema: [
+        select("screen", [["fill", "Fill available space"], ...Object.entries(SCREENS).map(([k, v]): [string, string] => [k, v.label]), ["custom", "Custom resolution…"]]),
+        select("orientation", [
+          ["auto", "Auto (detect)"],
+          ["landscape", "Landscape"],
+          ["portrait", "Portrait"],
+        ]),
+        ...(screen === "custom" ? [number("screen_width", 320, 7680, "px"), number("screen_height", 320, 7680, "px")] : []),
+        ...(screen !== "fill"
+          ? [select("ui_scale", [["auto", "Auto"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["1.75", "175%"], ["2", "200%"], ["3", "300%"]])]
+          : []),
+        number("columns", 1, 12),
+        number("portrait_columns", 1, 12),
+        ...(screen === "fill"
+          ? [select("height", [["screen", "Fill the screen"], ["auto", "Fixed row height (scrolls)"]], true), number("row_height", 60, 600, "px", 10)]
+          : []),
+        number("gap", 0, 48, "px"),
+      ],
+    },
+    {
+      type: "grid",
+      name: "",
+      schema: [
+        select("theme", [
+          ["auto", "Auto (follow HA light/dark)"],
+          ["light", "Light"],
+          ["dark", "Dark"],
+          ["ha", "Use my HA theme (ignores palette)"],
+        ]),
+      ],
+    },
+  ];
+};
+
+const BEHAVIOUR_SCHEMA = [
   { name: "background", selector: { text: {} } },
   {
     type: "grid",
@@ -68,18 +69,31 @@ const GENERAL_SCHEMA = [
 ];
 
 const GENERAL_LABELS: Record<string, string> = {
-  theme: "Theme",
+  screen: "Screen size",
+  screen_width: "Screen width",
+  screen_height: "Screen height",
+  ui_scale: "UI scale",
+  theme: "Light / dark mode",
   orientation: "Orientation",
   columns: "Columns (landscape)",
   portrait_columns: "Columns (portrait)",
   height: "Height",
   row_height: "Row height (when not filling screen)",
   gap: "Spacing",
-  accent_color: "Accent colour (e.g. #d4774f)",
   background: "Background image URL (optional)",
   display_only: "Display only (no touch)",
   hide_cursor: "Hide mouse cursor",
 };
+
+const CUSTOM_FIELDS: [keyof PaletteColors, string][] = [
+  ["background", "Background"],
+  ["surface", "Tiles"],
+  ["text", "Text"],
+  ["accent", "Accent"],
+  ["success", "On / home"],
+  ["warm", "Lights & heating"],
+  ["info", "Cooling & info"],
+];
 
 /** Removes keys the user cleared so the YAML stays tidy. */
 const clean = <T extends Record<string, any>>(obj: T): T =>
@@ -189,17 +203,108 @@ export class HearthDashboardEditor extends LitElement {
 
   private _label = (s: { name: string }) => LABELS[s.name] ?? GENERAL_LABELS[s.name] ?? s.name;
 
+  private _set(patch: Partial<DashboardConfig>): void {
+    this._commit(clean({ ...this._config!, ...patch }) as DashboardConfig);
+  }
+
+  private _setCustomColor(mode: "light" | "dark", key: keyof PaletteColors, value: string | undefined): void {
+    const current = this._config!.custom_palette ?? {};
+    const colors = clean({ ...current[mode], [key]: value });
+    const next = clean({ ...current, [mode]: Object.keys(colors).length ? colors : undefined });
+    this._set({ custom_palette: Object.keys(next).length ? next : undefined });
+  }
+
+  private _renderLook() {
+    const config = this._config!;
+    const palette = config.palette ?? "hearth";
+    const usingHa = config.theme === "ha";
+    const swatches = (c: PaletteColors) =>
+      html`<span class="mini" style="background:${c.background}">
+        <i style="background:${c.surface}"></i><i style="background:${c.accent}"></i><i style="background:${c.success}"></i><i style="background:${c.text}"></i>
+      </span>`;
+
+    return html`<div class="section">
+      <div class="section-title"><ha-icon icon="mdi:palette-outline"></ha-icon>Colour palette</div>
+      ${usingHa ? html`<p class="hint">Palettes are ignored while “Use my HA theme” is selected above.</p>` : nothing}
+      <div class="palettes ${usingHa ? "disabled" : ""}">
+        ${Object.entries(PALETTES).map(
+          ([key, p]) => html`<button class="palette ${palette === key ? "selected" : ""}" @click=${() => this._set({ palette: key })}>
+            <span class="pair">${swatches(p.light)}${swatches(p.dark)}</span>
+            <span class="p-name">${p.label}</span>
+            <span class="p-desc">${p.description}</span>
+          </button>`,
+        )}
+        <button class="palette ${palette === "custom" ? "selected" : ""}" @click=${() => this._set({ palette: "custom" })}>
+          <span class="pair"><span class="mini rainbow"></span></span>
+          <span class="p-name">Custom</span>
+          <span class="p-desc">Pick your own colours</span>
+        </button>
+      </div>
+
+      ${palette === "custom" && !usingHa
+        ? (["light", "dark"] as const).map(
+            (mode) => html`<div class="custom">
+              <div class="sub-title">${mode === "light" ? "Light mode colours" : "Dark mode colours"}</div>
+              <div class="pickers">
+                ${CUSTOM_FIELDS.map(
+                  ([key, label]) => html`<hearth-color-picker
+                    .label=${label}
+                    .value=${config.custom_palette?.[mode]?.[key]}
+                    .placeholder=${PALETTES.hearth[mode][key]}
+                    @value-changed=${(e: CustomEvent) => {
+                      e.stopPropagation();
+                      this._setCustomColor(mode, key, e.detail.value);
+                    }}
+                  ></hearth-color-picker>`,
+                )}
+              </div>
+            </div>`,
+          )
+        : nothing}
+
+      <div class="sub-title">Accent override (optional)</div>
+      <hearth-color-picker
+        .label=${"Accent colour — applies to any palette"}
+        .value=${config.accent_color}
+        @value-changed=${(e: CustomEvent) => {
+          e.stopPropagation();
+          this._set({ accent_color: e.detail.value });
+        }}
+      ></hearth-color-picker>
+    </div>`;
+  }
+
   protected render() {
     if (!this._config || !this.hass) return nothing;
     if (this._selected !== undefined) return this._renderWidgetEditor(this._selected);
 
     return html`
       <div class="section">
-        <div class="section-title"><ha-icon icon="mdi:palette-outline"></ha-icon>Look & layout</div>
+        <div class="section-title"><ha-icon icon="mdi:monitor-screenshot"></ha-icon>Screen & layout</div>
         <ha-form
           .hass=${this.hass}
           .data=${this._config}
-          .schema=${GENERAL_SCHEMA}
+          .schema=${generalSchema(this._config)}
+          .computeLabel=${this._label}
+          @value-changed=${this._generalChanged}
+        ></ha-form>
+        ${this._config.screen && this._config.screen !== "fill"
+          ? html`<p class="hint">
+              The dashboard is laid out for this exact resolution and scaled to fit whatever screen it's viewed on, so the
+              preview here matches the wall display. <b>UI scale</b> works like your OS display scaling — Auto renders 4K like
+              1080p but sharper.
+            </p>`
+          : nothing}
+      </div>
+
+      ${this._renderLook()}
+
+      <div class="section">
+        <div class="section-title"><ha-icon icon="mdi:tune-variant"></ha-icon>Behaviour</div>
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${BEHAVIOUR_SCHEMA}
           .computeLabel=${this._label}
           @value-changed=${this._generalChanged}
         ></ha-form>
@@ -412,6 +517,78 @@ export class HearthDashboardEditor extends LitElement {
     .error {
       color: var(--error-color);
       margin-top: 6px;
+    }
+    .palettes {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 8px;
+    }
+    .palettes.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    button.palette {
+      width: auto;
+      height: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      padding: 10px;
+      border-radius: 14px;
+      border: 1px solid var(--divider-color);
+      color: var(--primary-text-color);
+    }
+    button.palette.selected {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 1px var(--primary-color);
+    }
+    .pair {
+      display: flex;
+      gap: 4px;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+    .mini {
+      flex: 1;
+      height: 34px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+    .mini i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+    .mini i:first-child {
+      width: 14px;
+      height: 18px;
+      border-radius: 4px;
+    }
+    .mini.rainbow {
+      background: conic-gradient(#f87171, #fbbf24, #a3e635, #34d399, #38bdf8, #a78bfa, #f472b6, #f87171);
+    }
+    .p-name {
+      font-weight: 600;
+      font-size: 0.92em;
+    }
+    .p-desc {
+      font-size: 0.78em;
+      color: var(--secondary-text-color);
+    }
+    .sub-title {
+      font-weight: 600;
+      margin: 16px 0 8px;
+    }
+    .pickers {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
     }
   `;
 }

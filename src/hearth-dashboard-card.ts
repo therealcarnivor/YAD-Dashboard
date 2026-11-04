@@ -3,6 +3,8 @@ import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { styleMap } from "lit/directives/style-map.js";
 import { html as staticHtml, unsafeStatic } from "lit/static-html.js";
+import { paletteVars, resolvePalette } from "./palettes";
+import { autoScale, SCREENS } from "./screens";
 import { themeStyles } from "./styles";
 import type { DashboardConfig, HomeAssistant, WidgetConfig } from "./types";
 import { WIDGETS } from "./widgets/registry";
@@ -15,7 +17,9 @@ export const EDITOR_TAG = "hearth-dashboard-card-editor";
 
 const DEFAULTS = {
   theme: "auto",
+  palette: "hearth",
   orientation: "auto",
+  screen: "fill",
   columns: 4,
   portrait_columns: 2,
   height: "screen",
@@ -32,8 +36,22 @@ export class HearthDashboardCard extends LitElement {
   @property({ type: Boolean }) public preview = false;
   @state() private _config?: DashboardConfig;
   @state() private _portraitMedia = window.matchMedia("(orientation: portrait)").matches;
+  /** Available width and distance from the top of the page, used to fit fixed screen sizes. */
+  @state() private _size = { width: 0, top: 0 };
   private _mql = window.matchMedia("(orientation: portrait)");
   private _onOrientation = (e: MediaQueryListEvent) => (this._portraitMedia = e.matches);
+  private _resizeObserver = new ResizeObserver(() => this._measure());
+  private _onWindowResize = () => this._measure();
+
+  private _measure(): void {
+    const rect = this.getBoundingClientRect();
+    const top = Math.max(0, rect.top + window.scrollY);
+    if (Math.abs(rect.width - this._size.width) > 0.5 || Math.abs(top - this._size.top) > 0.5) {
+      this._size = { width: rect.width, top };
+    } else if (this._config?.screen && this._config.screen !== "fill") {
+      this.requestUpdate();
+    }
+  }
 
   public static getConfigElement(): HTMLElement {
     return document.createElement(EDITOR_TAG);
@@ -77,11 +95,15 @@ export class HearthDashboardCard extends LitElement {
     super.connectedCallback();
     this._mql.addEventListener("change", this._onOrientation);
     this._portraitMedia = this._mql.matches;
+    this._resizeObserver.observe(this);
+    window.addEventListener("resize", this._onWindowResize);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._mql.removeEventListener("change", this._onOrientation);
+    this._resizeObserver.disconnect();
+    window.removeEventListener("resize", this._onWindowResize);
   }
 
   protected shouldUpdate(changed: PropertyValues): boolean {
@@ -128,23 +150,38 @@ export class HearthDashboardCard extends LitElement {
     </div>`;
   }
 
+  /** Logical canvas size for a fixed screen preset, or undefined when filling the available space. */
+  private _fixedScreen(c: DashboardConfig, portrait: boolean): { width: number; height: number; scale: number } | undefined {
+    const screen = c.screen ?? DEFAULTS.screen;
+    if (screen === "fill") return undefined;
+    const preset = SCREENS[screen];
+    let w = preset?.width ?? Number(c.screen_width);
+    let h = preset?.height ?? Number(c.screen_height);
+    if (!(w > 0 && h > 0)) return undefined;
+    if (portrait !== h > w) [w, h] = [h, w];
+    const uiScale = Number(c.ui_scale);
+    const scale = uiScale > 0 ? uiScale : autoScale(w, h);
+    return { width: Math.round(w / scale), height: Math.round(h / scale), scale };
+  }
+
   protected render() {
     if (!this._config) return nothing;
     const c = { ...DEFAULTS, ...this._config };
     const portrait = this._portrait;
     const columns = Math.max(1, portrait ? c.portrait_columns : c.columns);
-    const fill = c.height !== "auto";
-    const height = c.height === "screen" ? (this.preview ? "640px" : "100dvh") : c.height === "auto" ? "auto" : c.height;
+    const fixed = this._fixedScreen(c, portrait);
+    const fill = !!fixed || c.height !== "auto";
     const visible = c.widgets.filter((w) => {
       const v = w.visibility ?? "all";
       return v === "all" || (v === "portrait") === portrait;
     });
 
+    const themeClass = this._themeClass;
     const vars: Record<string, string> = {
       "--cols": String(columns),
       "--gap": `${c.gap}px`,
       "--row-height": `${c.row_height}px`,
-      height,
+      ...(themeClass === "ha" ? {} : paletteVars(resolvePalette(c.palette, themeClass === "dark", c.custom_palette), themeClass === "dark")),
     };
     if (c.accent_color) {
       vars["--h-accent"] = c.accent_color;
@@ -152,24 +189,47 @@ export class HearthDashboardCard extends LitElement {
     }
     if (c.background) vars["--h-bg-image"] = `url("${c.background}")`;
 
+    let canvasStyle: Record<string, string> = {};
+    if (fixed) {
+      // Scale the fixed-resolution canvas to fit the space we have, keeping its aspect ratio.
+      const availW = this._size.width || fixed.width;
+      const availH = this.preview || c.height === "auto" ? Infinity : Math.max(240, window.innerHeight - this._size.top);
+      const k = Math.min(availW / fixed.width, availH / fixed.height);
+      const frameH = Number.isFinite(availH) ? availH : fixed.height * k;
+      vars.height = `${Math.floor(frameH)}px`;
+      canvasStyle = {
+        width: `${fixed.width}px`,
+        height: `${fixed.height}px`,
+        transform: `scale(${k})`,
+        left: `${Math.max(0, (availW - fixed.width * k) / 2)}px`,
+        top: `${Math.max(0, (frameH - fixed.height * k) / 2)}px`,
+        visibility: this._size.width ? "visible" : "hidden",
+      };
+    } else {
+      vars.height = c.height === "screen" ? (this.preview ? "640px" : "100dvh") : c.height === "auto" ? "auto" : c.height;
+    }
+
     return html`
       <div
         class=${classMap({
           hearth: true,
-          [this._themeClass]: true,
+          [themeClass]: true,
           portrait,
           landscape: !portrait,
           fill,
+          fixed: !!fixed,
           "display-only": c.display_only,
           "hide-cursor": c.hide_cursor,
           "has-bg": !!c.background,
         })}
         style=${styleMap(vars)}
       >
-        <div class="grid">
-          ${visible.length
-            ? visible.map((w) => this._renderWidget(w, portrait, columns))
-            : html`<div class="tile intro">Add some widgets in the card editor to get started.</div>`}
+        <div class="canvas" style=${styleMap(canvasStyle)}>
+          <div class="grid">
+            ${visible.length
+              ? visible.map((w) => this._renderWidget(w, portrait, columns))
+              : html`<div class="tile intro">Add some widgets in the card editor to get started.</div>`}
+          </div>
         </div>
       </div>
     `;
@@ -185,7 +245,6 @@ export class HearthDashboardCard extends LitElement {
         position: relative;
         box-sizing: border-box;
         width: 100%;
-        padding: var(--gap);
         background: radial-gradient(120% 80% at 0% 0%, var(--h-bg-2) 0%, transparent 60%), var(--h-bg);
         color: var(--h-text);
         font-family: var(--h-font);
@@ -198,6 +257,20 @@ export class HearthDashboardCard extends LitElement {
       .hearth.has-bg .tile:not(.transparent) {
         backdrop-filter: blur(18px) saturate(1.2);
         -webkit-backdrop-filter: blur(18px) saturate(1.2);
+      }
+      .canvas {
+        position: relative;
+        box-sizing: border-box;
+        padding: var(--gap);
+        container-type: inline-size;
+      }
+      .fill .canvas {
+        height: 100%;
+      }
+      .fixed .canvas {
+        position: absolute;
+        top: 0;
+        transform-origin: 0 0;
       }
       .grid {
         display: grid;
@@ -215,7 +288,7 @@ export class HearthDashboardCard extends LitElement {
         min-width: 0;
         min-height: 0;
         overflow: hidden;
-        padding: clamp(14px, 1.6vw, 22px);
+        padding: clamp(14px, 1.6cqw, 22px);
         border-radius: var(--h-radius);
         background: var(--h-surface);
         box-shadow: var(--h-shadow);

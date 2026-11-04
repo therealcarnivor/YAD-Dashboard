@@ -7,40 +7,6 @@ export const themeStyles = css`
     --h-radius-sm: 16px;
     --h-font: var(--hearth-font, "Nunito", "Quicksand", "Segoe UI Variable", var(--ha-font-family-body, Roboto), system-ui, sans-serif);
   }
-  .hearth.light {
-    --h-bg: #f3eee7;
-    --h-bg-2: #ebe3d8;
-    --h-surface: rgba(255, 252, 247, 0.92);
-    --h-surface-2: #f4ede4;
-    --h-border: rgba(80, 60, 40, 0.06);
-    --h-text: #2f2a25;
-    --h-muted: #8c8278;
-    --h-accent: #d4774f;
-    --h-accent-soft: rgba(212, 119, 79, 0.14);
-    --h-sage: #6f9273;
-    --h-sage-soft: rgba(111, 146, 115, 0.16);
-    --h-sky: #5f8fb4;
-    --h-amber: #e8a93a;
-    --h-amber-soft: rgba(232, 169, 58, 0.18);
-    --h-shadow: 0 1px 2px rgba(70, 45, 20, 0.05), 0 10px 30px -12px rgba(70, 45, 20, 0.14);
-  }
-  .hearth.dark {
-    --h-bg: #191714;
-    --h-bg-2: #221f1b;
-    --h-surface: rgba(39, 35, 31, 0.92);
-    --h-surface-2: #322d28;
-    --h-border: rgba(255, 240, 220, 0.05);
-    --h-text: #f3ece3;
-    --h-muted: #a1978c;
-    --h-accent: #eb956e;
-    --h-accent-soft: rgba(235, 149, 110, 0.16);
-    --h-sage: #95b598;
-    --h-sage-soft: rgba(149, 181, 152, 0.16);
-    --h-sky: #86b2d4;
-    --h-amber: #f0b955;
-    --h-amber-soft: rgba(240, 185, 85, 0.18);
-    --h-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
-  }
   .hearth.ha {
     --h-bg: var(--primary-background-color);
     --h-bg-2: var(--secondary-background-color);
@@ -137,7 +103,7 @@ export const widgetStyles = css`
   }
   button.round.primary {
     background: var(--h-accent);
-    color: #fff;
+    color: var(--h-on-accent, #fff);
   }
   .chip {
     display: inline-flex;

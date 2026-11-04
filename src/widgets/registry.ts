@@ -48,13 +48,14 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     label: "Clock & greeting",
     icon: "mdi:clock-outline",
     tag: "hearth-widget-clock",
-    defaults: { col_span: 2, row_span: 1, transparent: true },
+    defaults: { col_span: 2, row_span: 1, transparent: true, greeting: true, greet_by_name: true },
     schema: [
       {
         type: "grid",
         name: "",
         schema: [
           bool("greeting"),
+          bool("greet_by_name"),
           text("name"),
           bool("show_date"),
           bool("show_seconds"),
@@ -212,6 +213,7 @@ export const LABELS: Record<string, string> = {
   title: "Title",
   name: "Name",
   greeting: "Show greeting",
+  greet_by_name: "Greet by name",
   show_date: "Show date",
   show_seconds: "Show seconds",
   time_format: "Time format",

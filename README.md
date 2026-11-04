@@ -51,13 +51,18 @@ Copy `dist/hearth-dashboard.js` to `<config>/www/hearth-dashboard.js` and add `/
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `theme` | `auto` | `auto` (follows HA light/dark), `light`, `dark`, or `ha` to use your HA theme colours |
-| `accent_color` | theme | Any CSS colour, e.g. `"#7c9a7e"` |
+| `theme` | `auto` | Light/dark mode: `auto` (follows HA light/dark), `light`, `dark`, or `ha` to use your HA theme colours instead of a palette |
+| `palette` | `hearth` | Colour palette (each has a light and dark variant): `hearth`, `scandi`, `nordic`, `cottage`, `coastal`, `lavender`, `rose`, `urban`, `indigo`, or `custom` |
+| `custom_palette` | – | Your own colours when `palette: custom` — see [Colour palettes](#colour-palettes) |
+| `accent_color` | palette | Override the accent colour of any palette, e.g. `"#7c9a7e"` |
 | `background` | – | Optional background image URL (tiles become frosted glass) |
 | `orientation` | `auto` | `auto` (detects screen orientation), `landscape` or `portrait` |
+| `screen` | `fill` | `fill` uses the available space, or lay out for a fixed resolution: `720p`, `1080p`, `1440p`, `4k`, `wsvga` (1024×600), `wxga` (1280×800), `wuxga` (1920×1200), `ipad` (2048×1536), or `custom` — see [Screen sizes](#screen-sizes) |
+| `screen_width` / `screen_height` | – | Resolution in px when `screen: custom` |
+| `ui_scale` | `auto` | UI scale for fixed screens, like OS display scaling (`1`, `1.5`, `2`…) |
 | `columns` | `4` | Grid columns in landscape |
 | `portrait_columns` | `2` | Grid columns in portrait |
-| `height` | `screen` | `screen` fills the viewport with rows sized to fit; `auto` uses fixed `row_height` rows; or any CSS height |
+| `height` | `screen` | When `screen: fill`: `screen` fills the viewport with rows sized to fit; `auto` uses fixed `row_height` rows; or any CSS height |
 | `row_height` | `180` | Row height in px when `height: auto` |
 | `gap` | `16` | Spacing between tiles in px |
 | `display_only` | `false` | Disable all touch/clicks and hide controls — a pure information display |
@@ -79,7 +84,7 @@ Widgets are packed into the grid in order, filling gaps automatically.
 
 ### Widget options
 
-**clock** — `greeting` (true), `name` (defaults to the HA user's first name), `show_date` (true), `show_seconds` (false), `time_format` (`auto`, `12`, `24`).
+**clock** — `greeting` (true), `greet_by_name` (true; set `false` for just "Good morning"), `name` (defaults to the HA user's first name), `show_date` (true), `show_seconds` (false), `time_format` (`auto`, `12`, `24`).
 
 **weather** — `entity` (required), `forecast_type` (`daily`, `hourly`, `twice_daily`), `forecast_count` (5), `show_details` (true).
 
@@ -153,6 +158,31 @@ widgets:
       content: "🧺 Bins go out on **Thursday**"
 ```
 
+### Screen sizes
+
+Pick the resolution of the display the dashboard is for (`screen: 1080p`, `screen: 4k`, …) and set `orientation: portrait` or `landscape`. Hearth lays the grid out for exactly that screen and scales it to fit whatever it's viewed on — so the editor preview on your laptop matches the wall tablet pixel for pixel, letterboxed in the palette colours.
+
+High-resolution panels get a matching UI scale automatically (like Windows/macOS display scaling): a 4K screen lays out like 1080p but renders twice as sharp, 1440p uses 150%. Override with `ui_scale` if text looks too big or small. Use `screen: custom` with `screen_width`/`screen_height` for anything else.
+
+### Colour palettes
+
+Choose a palette in the editor's gallery — every palette comes in light and dark, and `theme: auto` switches between them with Home Assistant. With `palette: custom`, pick your own colours using the colour wheel; anything you leave empty falls back to the Hearth palette:
+
+```yaml
+palette: custom
+custom_palette:
+  light:
+    background: "#eef3ef"
+    surface: "#ffffff"   # tiles
+    text: "#1f2d26"
+    accent: "#0f766e"
+    success: "#4f8a6a"   # on / home
+    warm: "#e3a24b"      # lights & heating
+    info: "#4f8fbf"      # cooling, rain, solar
+  dark:
+    accent: "#f59e0b"
+```
+
 ### Display-only mode
 
 Set `display_only: true` for a screen nobody should touch (hallway clock, TV, picture frame). All interaction is disabled, controls such as thermostat buttons and media controls are hidden, and only state is shown. Combine with `hide_cursor: true` on a PC-based kiosk.
@@ -168,7 +198,7 @@ npm run demo       # builds demo/build/demo.js with a mocked Home Assistant
 npx http-server .  # then open http://localhost:8080/demo/
 ```
 
-The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?orientation=portrait|landscape` and `?display_only=1`.
+The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0` and `?display_only=1`.
 
 `dist/hearth-dashboard.js` is committed so HACS can install straight from the repository; publishing a GitHub release also attaches it as a release asset (see `.github/workflows/release.yml`).
 

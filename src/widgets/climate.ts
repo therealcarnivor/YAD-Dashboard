@@ -252,7 +252,7 @@ export class HearthClimate extends HearthWidget<ClimateConfig> {
       }
       .mode.active {
         background: var(--h-accent);
-        color: #fff;
+        color: var(--h-on-accent, #fff);
       }
       .mode[disabled] {
         cursor: default;

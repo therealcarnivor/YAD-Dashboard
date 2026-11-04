@@ -1,3 +1,5 @@
+import type { CustomPalette } from "./palettes";
+
 export interface HassEntity {
   entity_id: string;
   state: string;
@@ -52,10 +54,20 @@ export interface WidgetConfig {
 
 export interface DashboardConfig {
   type: string;
+  /** Light/dark mode, or "ha" to use the active Home Assistant theme. */
   theme?: "auto" | "light" | "dark" | "ha";
+  /** A key of PALETTES, or "custom". */
+  palette?: string;
+  custom_palette?: CustomPalette;
   accent_color?: string;
   background?: string;
   orientation?: "auto" | "landscape" | "portrait";
+  /** "fill" uses whatever space is available, or a key of SCREENS / "custom" for a fixed resolution. */
+  screen?: string;
+  screen_width?: number;
+  screen_height?: number;
+  /** UI scale for fixed screens; "auto" picks one from the resolution. */
+  ui_scale?: number | string;
   columns?: number;
   portrait_columns?: number;
   /** "screen" fills the viewport (ideal with ?kiosk), "auto" grows with content, or any CSS height. */

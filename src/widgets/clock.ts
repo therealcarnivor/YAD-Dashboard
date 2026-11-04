@@ -11,6 +11,9 @@ export interface ClockConfig extends WidgetConfig {
   show_seconds?: boolean;
   show_date?: boolean;
   greeting?: boolean;
+  /** Include a name in the greeting ("Good morning, Sam") or just "Good morning". */
+  greet_by_name?: boolean;
+  /** Name to greet; defaults to the logged-in Home Assistant user. */
   name?: string;
 }
 
@@ -58,7 +61,7 @@ export class HearthClock extends HearthWidget<ClockConfig> {
     }
     const seconds = String(this._now.getSeconds()).padStart(2, "0");
     const date = new Intl.DateTimeFormat(lang(this.hass), { weekday: "long", day: "numeric", month: "long" }).format(this._now);
-    const name = c.name ?? this.hass?.user?.name?.split(" ")[0];
+    const name = c.greet_by_name === false ? undefined : c.name || this.hass?.user?.name?.split(" ")[0];
 
     return html`
       <div class="clock">
