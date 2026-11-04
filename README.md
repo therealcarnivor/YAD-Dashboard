@@ -32,13 +32,20 @@ One card, in a **panel view**, renders a full-screen grid of widgets that you co
 
 ### HACS (recommended)
 
+1. Open **HACS** in Home Assistant and search for **YAD** in the **Dashboard** category.
+2. Open **YAD**, select **Download**, and confirm the installation.
+3. Reload your browser, then follow [Setting up the dashboard](#setting-up-the-dashboard).
+
+HACS registers the resource automatically. If it doesn't, add it manually under **Settings → Dashboards → ⋮ → Resources**: URL `/hacsfiles/YAD-Dashboard/yad.js`, type **JavaScript module**. Keep only one YAD resource entry.
+
+### HACS custom repository (alternative)
+
+If YAD is not yet visible in your HACS store, add it as a custom repository:
+
 1. In HACS, open the ⋮ menu → **Custom repositories**.
 2. Add `https://github.com/therealcarnivor/YAD-Dashboard` with type **Dashboard**.
-3. Search for **YAD**, install it, and reload your browser.
-
-HACS registers the resource automatically. If it doesn't, add it manually under **Settings → Dashboards → ⋮ → Resources**: URL `/hacsfiles/YAD-Dashboard/yad.js`, type **JavaScript module**.
-
-> **Upgrading from Hearth Dashboard (v0.2.x)?** The project was renamed to YAD in v0.3.0. Your existing `custom:hearth-dashboard-card` configs keep working. If you added the resource by hand, change its URL to `/hacsfiles/YAD-Dashboard/yad.js` and remove the old `hearth-dashboard.js` entry.
+3. Search for **YAD**, select **Download**, and reload your browser.
+4. Follow [Setting up the dashboard](#setting-up-the-dashboard). The resource URL and updates are the same as for the standard HACS installation above.
 
 ### Updates and versions
 
@@ -230,9 +237,9 @@ The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom
 
 CI checks HACS compliance, version consistency, TypeScript, bundle reproducibility and production-bundle loading in Chromium. Releases are blocked if HACS validation or browser tests fail. Browser tests use a mocked Home Assistant object; they do not certify every widget against a live Home Assistant installation.
 
-### HACS default-store submission
+### Maintaining HACS compliance
 
-YAD is a **Dashboard/plugin**, not a backend integration; Hassfest and integration-brand requirements do not apply. Follow the [HACS inclusion requirements](https://hacs.xyz/docs/publish/include/): keep the repository public and active, with issues enabled, a description, topics, an identifiable open-source license and README images. HACS validation must pass without ignored checks, and a full GitHub release must be published after successful validation. Submit `therealcarnivor/YAD-Dashboard` alphabetically to the `plugin` list in `hacs/default` when ready. Passing CI does not itself add YAD to the default store or guarantee acceptance.
+YAD is a **Dashboard/plugin**, not a backend integration; Hassfest and integration-brand requirements do not apply. Follow the [HACS inclusion requirements](https://hacs.xyz/docs/publish/include/): keep the repository public and active, with issues enabled, a description, topics, an identifiable open-source license and README images. HACS validation must pass without ignored checks, and a full GitHub release must be published after successful validation.
 
 ### Releasing a new version
 
