@@ -8,6 +8,7 @@
     "build": "rollup -c",
     "watch": "rollup -c -w",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-bundle.mjs",
     "demo": "rollup -c --environment DEMO",
     "version": "node scripts/sync-version.mjs && npm run build && git add src/version.ts CHANGELOG.md dist",
     "postversion": "git push --follow-tags"
@@ -32,6 +33,7 @@
     "lit": "^3.3.3"
   },
   "devDependencies": {
+    "playwright": "^1.56.1",
     "@mdi/js": "^7.4.47",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-terser": "^1.0.2",

@@ -7,6 +7,11 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- Automated Chromium checks for the production bundle's card registration, clock rendering, widgets, editor and card-picker entry.
+- HACS validation and browser tests must pass before a GitHub release is published.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

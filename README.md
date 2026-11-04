@@ -218,6 +218,8 @@ npm install
 npm run build      # -> dist/yad.js
 npm run watch      # rebuild on change
 npm run typecheck
+npx playwright install chromium # once, for browser tests
+npm test           # production bundle smoke tests
 npm run demo       # builds demo/build/demo.js with a mocked Home Assistant
 npx http-server .  # then open http://localhost:8080/demo/
 ```
@@ -225,6 +227,12 @@ npx http-server .  # then open http://localhost:8080/demo/
 The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0` and `?display_only=1`.
 
 `dist/yad.js` is committed so HACS can install straight from the repository, and each GitHub release also includes it as a download.
+
+CI checks HACS compliance, version consistency, TypeScript, bundle reproducibility and production-bundle loading in Chromium. Releases are blocked if HACS validation or browser tests fail. Browser tests use a mocked Home Assistant object; they do not certify every widget against a live Home Assistant installation.
+
+### HACS default-store submission
+
+YAD is a **Dashboard/plugin**, not a backend integration; Hassfest and integration-brand requirements do not apply. Follow the [HACS inclusion requirements](https://hacs.xyz/docs/publish/include/): keep the repository public and active, with issues enabled, a description, topics, an identifiable open-source license and README images. HACS validation must pass without ignored checks, and a full GitHub release must be published after successful validation. Submit `therealcarnivor/YAD-Dashboard` alphabetically to the `plugin` list in `hacs/default` when ready. Passing CI does not itself add YAD to the default store or guarantee acceptance.
 
 ### Releasing a new version
 

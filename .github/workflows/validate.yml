@@ -21,6 +21,10 @@ jobs:
       - run: npm run build
       - name: Ensure dist is up to date
         run: git diff --exit-code -- dist
+      - name: Install browser for bundle tests
+        run: npx playwright install --with-deps chromium
+      - name: Test the production bundle in Chromium
+        run: npm test
 
   hacs:
     runs-on: ubuntu-latest

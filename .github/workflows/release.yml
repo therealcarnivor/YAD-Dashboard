@@ -20,7 +20,15 @@ permissions:
 concurrency: release
 
 jobs:
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: plugin
+
   release:
+    needs: hacs
     runs-on: ubuntu-latest
     steps:
       - name: Only run manual releases from main
@@ -62,6 +70,10 @@ jobs:
       - run: npm run build
       - name: Ensure the committed bundle matches the source
         run: git diff --exit-code -- dist
+      - name: Install browser for bundle tests
+        run: npx playwright install --with-deps chromium
+      - name: Test the production bundle in Chromium
+        run: npm test
 
       - name: Write release notes
         run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" > release-notes.md
