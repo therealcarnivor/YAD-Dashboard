@@ -187,6 +187,17 @@ try {
     document.body.append(calendar);
     await settle(calendar);
     check(calendar.shadowRoot.querySelectorAll(".event").length === 2 && calendar.shadowRoot.querySelector(".event.weekend"), "Weekend highlight is missing");
+    calendar.style.setProperty("--h-surface-2", "#eeeeee");
+    const weekend = calendar.shadowRoot.querySelector(".event.weekend");
+    let previousTint;
+    for (const [accent, headingColor] of [["#287f8e", "rgb(40, 127, 142)"], ["#858aff", "rgb(133, 138, 255)"], ["#d4774f", "rgb(212, 119, 79)"]]) {
+      calendar.style.setProperty("--h-accent", accent);
+      const style = getComputedStyle(weekend);
+      check(style.outlineStyle === "none" && style.boxShadow.includes("inset"), "Weekend border must stay inside the event to avoid clipped sides");
+      check(style.backgroundColor !== previousTint, "Weekend tint must follow the selected palette accent");
+      check(getComputedStyle(calendar.shadowRoot.querySelector(".day-label.weekend")).color === headingColor, "Weekend heading must use the selected palette accent");
+      previousTint = style.backgroundColor;
+    }
     check(calendar.shadowRoot.querySelector(".bar.badge").textContent.trim() === "F" && calendar.shadowRoot.querySelector(".bar").title === "Family", "Calendar initial and accessible name are missing");
     calendar.config = { ...calendar.config, show_weekends: false, max_events: 1 };
     await settle(calendar);
@@ -221,6 +232,147 @@ try {
     return ["background controls and failures", "quarter-row geometry", "vehicle data and actions", "calendar weekends and badges", "editor media/upload and collapsed palettes"];
   });
   console.log(`PASS features: ${features.join("; ")}`);
+  await page.setViewportSize({ width: 1000, height: 800 });
+  const compact = await page.evaluate(async () => {
+    const check = (condition, message) => { if (!condition) throw new Error(message); };
+    const settle = async (card) => {
+      await card.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    };
+    const state = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
+    const entities = Object.fromEntries(Array.from({ length: 30 }, (_, i) => {
+      const id = `sensor.test_${i}`;
+      return [id, state(id, String(i), { friendly_name: `Reading ${i}` })];
+    }));
+    const hass = {
+      states: {
+        ...entities,
+        "sensor.charge": state("sensor.charge", "50"),
+        "sensor.range": state("sensor.range", "120"),
+        "person.test": state("person.test", "home", { friendly_name: "Test" }),
+        "weather.test": state("weather.test", "sunny", { temperature: 16, humidity: 60 }),
+        "climate.test": state("climate.test", "heat", { temperature: 21, current_temperature: 20, hvac_modes: ["off", "heat"] }),
+        "media_player.test": state("media_player.test", "playing", { media_title: "Test track", supported_features: 4 | 16 | 32 }),
+      },
+      user: { name: "Test" }, language: "en-GB", locale: { language: "en-GB", time_format: "24" },
+      callApi: async () => [],
+      callWS: async () => ({}),
+      connection: { subscribeMessage: async (callback) => { callback({ forecast: [] }); return () => {}; } },
+    };
+    const card = document.createElement("yad-card");
+    card.style.width = "900px";
+    card.hass = hass;
+    const config = {
+      type: "custom:yad-card", layout_mode: "compact", columns: 2, portrait_columns: 1, orientation: "landscape",
+      height: "screen", screen: "4k", row_height: 180, gap: 16,
+      widgets: [
+        { type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1 },
+        { type: "clock", auto_height: false, row_span: 2, col_span: 1 },
+        { type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1 },
+        { type: "sensors", entities: Object.keys(entities), layout: "list", auto_height: true, auto_height_max: 240, col_span: 2 },
+      ],
+    };
+    card.setConfig(config);
+    document.body.append(card);
+    await settle(card);
+    const tiles = () => [...card.shadowRoot.querySelectorAll(".tile")];
+    const rect = (element) => element.getBoundingClientRect();
+    const assertNoOverlap = () => {
+      const boxes = tiles().map(rect);
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        check(a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1, `Compact widgets ${i}/${j} overlap`);
+      }
+    };
+    assertNoOverlap();
+    check(!card.shadowRoot.querySelector(".fixed") && !card.shadowRoot.querySelector(".fill"), "Compact must not stretch to screen presets");
+    check(rect(tiles()[0]).height < 180, "Short vehicle widget did not shrink to content");
+    check(Math.abs(rect(tiles()[1]).height - 376) < 1, "Manual widget row-based height changed");
+    check(rect(tiles()[2]).top < rect(tiles()[1]).bottom - 20, "Widgets are not independently compacted into the shorter column");
+    check(rect(tiles()[2]).top >= rect(tiles()[0]).bottom + 15, "Compact vertical gap is missing");
+    check(rect(tiles()[3]).height <= 241, "Automatic-height cap was exceeded");
+    const sensorList = tiles()[3].querySelector("yad-widget-sensors").shadowRoot.querySelector(".scroll");
+    check(sensorList.scrollHeight > sensorList.clientHeight + 100, "Long sensor lists must scroll inside the capped widget");
+    const originalTop = rect(tiles()[2]).top;
+    card.hass = { ...hass, states: { ...hass.states, "sensor.charge": state("sensor.charge", "unavailable") } };
+    await settle(card);
+    check(Math.abs(rect(tiles()[2]).top - originalTop) > 1, "Entity-driven content resizing did not repack widgets");
+    assertNoOverlap();
+    card.setConfig({ ...config, orientation: "portrait" });
+    await settle(card);
+    check(tiles().every((tile) => Math.abs(rect(tile).width - 868) < 1), "Portrait column spans did not clamp to one column");
+    assertNoOverlap();
+    const compactHeight = rect(card).height;
+    check(compactHeight > 800, "Compact dashboard must grow and scroll with its content");
+    card.style.width = "520px";
+    await settle(card);
+    check(tiles().every((tile) => Math.abs(rect(tile).width - 488) < 1), "Compact tiles did not resize with the card width");
+    assertNoOverlap();
+    card.style.width = "900px";
+    card.setConfig({ ...config, layout_mode: "grid", height: "auto", screen: "fill", widgets: [{ type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1, row_span: 2 }] });
+    await settle(card);
+    check(!tiles()[0].firstElementChild.hasAttribute("auto-height") && Math.abs(rect(tiles()[0]).height - 376) < 1, "Grid mode must ignore auto height and retain row sizing");
+    card.hass = hass;
+    const intrinsicWidgets = [
+      { type: "clock" },
+      { type: "weather", entity: "weather.test" },
+      { type: "climate", entity: "climate.test" },
+      { type: "media", entity: "media_player.test" },
+      { type: "people", entities: ["person.test"] },
+      { type: "energy", power_entity: "sensor.charge", show_graph: false },
+      { type: "calendar", entities: [], title: "Calendar" },
+      { type: "toggles", entities: [] },
+    ];
+    card.setConfig({ ...config, screen: "fill", widgets: intrinsicWidgets.map((widget) => ({ ...widget, auto_height: true, col_span: 1 })) });
+    await settle(card);
+    assertNoOverlap();
+    const climate = card.shadowRoot.querySelector("yad-widget-climate");
+    check(rect(climate.shadowRoot.querySelector(".dial")).height > 100, "Automatic climate dial collapsed");
+    const media = card.shadowRoot.querySelector("yad-widget-media");
+    check(rect(media.shadowRoot.querySelector(".art")).height > 50, "Automatic media artwork collapsed");
+    const sizes = tiles().map((tile) => [tile.firstElementChild.localName, rect(tile).height]);
+    check(sizes.every(([, height]) => height > 20 && height <= 601), "An auto-height widget collapsed or exceeded its cap");
+    let embedded;
+    window.loadCardHelpers = async () => ({
+      createCardElement: () => {
+        embedded = document.createElement("div");
+        embedded.style.height = "70px";
+        embedded.textContent = "Embedded content";
+        return embedded;
+      },
+    });
+    card.setConfig({ ...config, widgets: [
+      { type: "card", card: { type: "markdown" }, auto_height: true, col_span: 2 },
+      { type: "spacer", row_span: 0.25, col_span: 2 },
+      { type: "car", charge_entity: "sensor.charge", auto_height: true, visibility: "portrait", col_span: 1 },
+    ] });
+    await settle(card);
+    check(tiles().length === 2, "Compact layout must honour orientation visibility");
+    check(Math.abs(rect(tiles()[1]).height - 33) < 1, "Compact spacer quarter-row size changed");
+    const embeddedHeight = rect(tiles()[0]).height;
+    const spacerTop = rect(tiles()[1]).top;
+    embedded.style.height = "170px";
+    await settle(card);
+    check(Math.abs(rect(tiles()[0]).height - embeddedHeight - 100) < 1 && Math.abs(rect(tiles()[1]).top - spacerTop - 100) < 1, "Asynchronous embedded-card height changes must repack following widgets");
+    assertNoOverlap();
+    delete window.loadCardHelpers;
+    const editor = document.createElement("yad-card-editor");
+    editor.hass = hass;
+    editor.setConfig(config);
+    document.body.append(editor);
+    await settle(editor);
+    const form = editor.shadowRoot.querySelector("ha-form");
+    const fields = form.schema.flatMap((group) => group.schema ?? [group]).map((field) => field.name);
+    check(fields.includes("layout_mode") && !fields.includes("screen") && fields.includes("row_height"), "Compact editor controls must hide screen presets");
+    editor.shadowRoot.querySelector('button[title="Edit"]').click();
+    await settle(editor);
+    const widgetFields = [...editor.shadowRoot.querySelectorAll("ha-form")].flatMap((form) => form.schema.flatMap((group) => group.schema ?? [group])).map((field) => field.name);
+    check(widgetFields.includes("auto_height") && widgetFields.includes("auto_height_max"), "Per-widget automatic height controls are missing");
+    editor.remove();
+    card.remove();
+    return sizes;
+  });
+  console.log(`PASS compact layout: independent packing, spans, capped scrolling, state updates, grid compatibility and intrinsic widgets ${JSON.stringify(compact)}`);
   await page.clock.install();
   await page.evaluate(async () => {
     window.backgroundRenewals = 0;

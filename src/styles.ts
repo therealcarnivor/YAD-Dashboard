@@ -130,4 +130,18 @@ export const widgetStyles = css`
   :host([display-only]) .control {
     display: none !important;
   }
+  :host([auto-height]) {
+    height: auto;
+    max-height: var(--auto-content-max, 556px);
+    container-type: inline-size;
+  }
+  :host([auto-height]) > :not(.scroll) {
+    flex-shrink: 0;
+  }
+  :host([auto-height]) .scroll {
+    flex: 0 1 auto;
+  }
+  :host([auto-height]) .empty {
+    min-height: 64px;
+  }
 `;

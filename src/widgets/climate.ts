@@ -167,6 +167,8 @@ export class YadClimate extends YadWidget<ClimateConfig> {
         height: 100%;
         display: block;
       }
+      :host([auto-height]) .body { flex: none; }
+      :host([auto-height]) .dial { height: min(65cqw, 220px); }
       circle {
         fill: none;
         stroke-width: 7;

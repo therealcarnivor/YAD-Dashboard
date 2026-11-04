@@ -52,6 +52,7 @@ export class YadPeople extends YadWidget<PeopleConfig> {
   static styles = [
     widgetStyles,
     css`
+      :host([auto-height]) .avatar { --size: clamp(48px, 18cqw, 72px); }
       .people {
         flex: 1;
         display: flex;

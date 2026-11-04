@@ -78,6 +78,7 @@ export class YadCardWidget extends YadWidget<CardWidgetConfig> {
         --primary-text-color: var(--h-text);
         --secondary-text-color: var(--h-muted);
       }
+      :host([auto-height]) .wrap { height: auto; }
     `,
   ];
 }

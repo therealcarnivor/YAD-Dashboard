@@ -221,6 +221,8 @@ export class YadEnergy extends YadWidget<EnergyConfig> {
         height: 100%;
         display: block;
       }
+      :host([auto-height]) .graph { flex: none; height: 100px; }
+      :host([auto-height]) .grow { flex: none; margin: 4px 0; }
       .stats {
         display: flex;
         flex-wrap: wrap;

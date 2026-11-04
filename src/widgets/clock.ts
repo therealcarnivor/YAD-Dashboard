@@ -115,6 +115,10 @@ export class YadClock extends YadWidget<ClockConfig> {
         font-size: clamp(1rem, 14cqh, 2rem);
         font-weight: 600;
       }
+      :host([auto-height]) .clock { gap: 6px; }
+      :host([auto-height]) .greeting,
+      :host([auto-height]) .date { font-size: clamp(1rem, 4cqw, 1.4rem); }
+      :host([auto-height]) .time { font-size: clamp(2.5rem, 20cqw, 6rem); }
     `,
   ];
 }

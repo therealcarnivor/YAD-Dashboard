@@ -84,6 +84,7 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 
 | Option | Default | Description |
 | --- | --- | --- |
+| `layout_mode` | `grid` | `grid` keeps row-based/fill-screen sizing; `compact` packs widgets vertically with optional per-widget automatic height |
 | `theme` | `auto` | Light/dark mode: `auto` (follows HA light/dark), `light`, `dark`, or `ha` to use your HA theme colours instead of a palette |
 | `palette` | `hearth` | Colour palette (each has a light and dark variant): `hearth`, `scandi`, `nordic`, `cottage`, `coastal`, `lavender`, `rose`, `urban`, `indigo`, or `custom` |
 | `custom_palette` | – | Your own colours when `palette: custom` — see [Colour palettes](#colour-palettes) |
@@ -117,8 +118,38 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | `portrait_col_span` / `portrait_row_span` | Size override for portrait |
 | `visibility` | `all` (default), `landscape` or `portrait` |
 | `transparent` | Render without the tile background (default for `clock`) |
+| `auto_height` | `false` by default. In compact mode, shrink to content instead of using row spans; ignored in grid mode and for spacers |
+| `auto_height_max` | Maximum total tile height in px for automatic sizing (default `600`, minimum `60`); long lists scroll within this limit |
 
 Widgets are packed into the grid in order, filling gaps automatically.
+
+### Compact layout
+
+Select **Screen & layout → Dashboard layout → Compact**. Open a widget's **Size & placement** and enable **Automatic height** to remove unused vertical space. Set **Maximum automatic height** to limit long calendars, sensor lists or embedded cards. Leave automatic height off on widgets you want to keep at their row-based size.
+
+Compact layout grows with content and scrolls instead of stretching widgets to fill the screen. It ignores `screen`, `ui_scale` and `height` while selected; switching back to **Fixed grid** restores those settings. Width and portrait width overrides still apply, and changing content or available width repacks the tiles. Dense packing can place later widgets in an earlier gap, while the keyboard/DOM order remains your configured widget order. Spacers keep their explicit quarter-row size.
+
+```yaml
+type: custom:yad-card
+layout_mode: compact
+columns: 4
+portrait_columns: 2
+row_height: 180
+widgets:
+  - type: car
+    charge_entity: sensor.car_battery
+    auto_height: true
+    col_span: 2
+  - type: calendar
+    entities:
+      - calendar.family
+    auto_height: true
+    auto_height_max: 360
+    col_span: 1
+  - type: climate
+    entity: climate.living_room
+    row_span: 2
+```
 
 ### Widget options
 
@@ -279,7 +310,7 @@ npm run demo       # builds demo/build/demo.js with a mocked Home Assistant
 npx http-server .  # then open http://localhost:8080/demo/
 ```
 
-The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0`, `?display_only=1` and `?showcase=1` (vehicle, divider and weekend highlighting).
+The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0`, `?display_only=1`, `?showcase=1` (vehicle, divider and weekend highlighting) and `?layout=compact` (automatic widget heights).
 
 `dist/yad.js` is committed so HACS can install straight from the repository, and each GitHub release also includes it as a download.
 

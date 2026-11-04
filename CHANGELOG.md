@@ -7,6 +7,16 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- Optional compact dashboard layout with per-widget automatic height and configurable limits for scrollable content.
+- Content- and width-responsive vertical packing that preserves column spans, fixed-height widgets, portrait overrides and explicit spacer heights.
+- Browser coverage for independent packing, automatic height limits, entity updates and compatibility with the existing fixed grid.
+
+### Fixed
+
+- Weekend event highlights now use a subtle palette-accent tint and inset border, preventing clipping at the sides of the calendar list.
+
 ## [0.4.0] - 2026-11-04
 
 ### Added

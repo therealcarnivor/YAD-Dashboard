@@ -92,6 +92,7 @@ export class YadMedia extends YadWidget<MediaConfig> {
   static styles = [
     widgetStyles,
     css`
+      :host([auto-height]) .art { height: min(32cqw, 120px); }
       :host {
         position: relative;
       }

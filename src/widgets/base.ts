@@ -6,6 +6,7 @@ export abstract class YadWidget<C extends WidgetConfig = WidgetConfig> extends L
   @property({ attribute: false }) public hass?: HomeAssistant;
   @property({ attribute: false }) public config!: C;
   @property({ type: Boolean, reflect: true, attribute: "display-only" }) public displayOnly = false;
+  @property({ type: Boolean, reflect: true, attribute: "auto-height" }) public autoHeight = false;
 
   /** Entities whose state changes should trigger a re-render. */
   protected abstract watchedEntities(): string[];

@@ -179,6 +179,7 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
         mask-image: linear-gradient(to bottom, #000 85%, transparent);
         padding-bottom: 16px;
       }
+      :host([auto-height]) .list { mask-image: none; padding-bottom: 0; }
       .day-label {
         font-size: 0.8rem;
         font-weight: 800;
@@ -190,9 +191,12 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
       .day-label.today {
         color: var(--h-accent);
       }
-      .day-label.weekend { color: var(--h-warm, var(--h-accent)); display: flex; align-items: center; gap: 8px; }
+      .day-label.weekend { color: var(--h-accent); display: flex; align-items: center; gap: 8px; }
       .day-label.weekend ha-icon { --mdc-icon-size: 16px; }
-      .event.weekend { outline: 1px solid var(--h-warm, var(--h-accent)); background: var(--h-amber-soft); }
+      .event.weekend {
+        background: color-mix(in srgb, var(--h-accent) 8%, var(--h-surface-2));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--h-accent) 28%, var(--h-surface-2));
+      }
       .day-label:first-child {
         margin-top: 0;
       }
