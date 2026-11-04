@@ -7,6 +7,12 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Changed
+
+- Removed the dashboard-wide Compact layout. Automatic height is now controlled directly in each widget's Size & placement and shrinks only that tile within the normal grid.
+- Screen presets, custom resolution, scaling and fill-screen settings remain available at all times. Saved `layout_mode` values are ignored and removed when editing.
+- Automatic-height limits respect the assigned grid area, with scrollable content capped without moving neighbouring widgets.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added

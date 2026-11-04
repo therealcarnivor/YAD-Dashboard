@@ -233,11 +233,11 @@ try {
   });
   console.log(`PASS features: ${features.join("; ")}`);
   await page.setViewportSize({ width: 1000, height: 800 });
-  const compact = await page.evaluate(async () => {
+  const automaticHeight = await page.evaluate(async () => {
     const check = (condition, message) => { if (!condition) throw new Error(message); };
     const settle = async (card) => {
       await card.updateComplete;
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 650));
     };
     const state = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
     const entities = Object.fromEntries(Array.from({ length: 30 }, (_, i) => {
@@ -264,12 +264,12 @@ try {
     card.hass = hass;
     const config = {
       type: "custom:yad-card", layout_mode: "compact", columns: 2, portrait_columns: 1, orientation: "landscape",
-      height: "screen", screen: "4k", row_height: 180, gap: 16,
+      height: "auto", screen: "fill", row_height: 180, gap: 16,
       widgets: [
-        { type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1 },
+        { type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1, row_span: 1 },
         { type: "clock", auto_height: false, row_span: 2, col_span: 1 },
-        { type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1 },
-        { type: "sensors", entities: Object.keys(entities), layout: "list", auto_height: true, auto_height_max: 240, col_span: 2 },
+        { type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1, row_span: 1 },
+        { type: "sensors", entities: Object.keys(entities), layout: "list", auto_height: true, auto_height_max: 240, col_span: 2, row_span: 3 },
       ],
     };
     card.setConfig(config);
@@ -285,25 +285,22 @@ try {
       }
     };
     assertNoOverlap();
-    check(!card.shadowRoot.querySelector(".fixed") && !card.shadowRoot.querySelector(".fill"), "Compact must not stretch to screen presets");
+    check(!card.shadowRoot.querySelector(".compact"), "Removed compact mode must not be rendered for legacy configurations");
     check(rect(tiles()[0]).height < 180, "Short vehicle widget did not shrink to content");
     check(Math.abs(rect(tiles()[1]).height - 376) < 1, "Manual widget row-based height changed");
-    check(rect(tiles()[2]).top < rect(tiles()[1]).bottom - 20, "Widgets are not independently compacted into the shorter column");
-    check(rect(tiles()[2]).top >= rect(tiles()[0]).bottom + 15, "Compact vertical gap is missing");
+    check(Math.abs(rect(tiles()[2]).top - rect(tiles()[0]).top - 196) < 1, "Automatic sizing must preserve grid placement");
     check(rect(tiles()[3]).height <= 241, "Automatic-height cap was exceeded");
     const sensorList = tiles()[3].querySelector("yad-widget-sensors").shadowRoot.querySelector(".scroll");
     check(sensorList.scrollHeight > sensorList.clientHeight + 100, "Long sensor lists must scroll inside the capped widget");
     const originalTop = rect(tiles()[2]).top;
     card.hass = { ...hass, states: { ...hass.states, "sensor.charge": state("sensor.charge", "unavailable") } };
     await settle(card);
-    check(Math.abs(rect(tiles()[2]).top - originalTop) > 1, "Entity-driven content resizing did not repack widgets");
+    check(Math.abs(rect(tiles()[2]).top - originalTop) < 1, "Entity-driven resizing must not move other widgets");
     assertNoOverlap();
     card.setConfig({ ...config, orientation: "portrait" });
     await settle(card);
     check(tiles().every((tile) => Math.abs(rect(tile).width - 868) < 1), "Portrait column spans did not clamp to one column");
     assertNoOverlap();
-    const compactHeight = rect(card).height;
-    check(compactHeight > 800, "Compact dashboard must grow and scroll with its content");
     card.style.width = "520px";
     await settle(card);
     check(tiles().every((tile) => Math.abs(rect(tile).width - 488) < 1), "Compact tiles did not resize with the card width");
@@ -311,7 +308,14 @@ try {
     card.style.width = "900px";
     card.setConfig({ ...config, layout_mode: "grid", height: "auto", screen: "fill", widgets: [{ type: "car", charge_entity: "sensor.charge", auto_height: true, col_span: 1, row_span: 2 }] });
     await settle(card);
-    check(!tiles()[0].firstElementChild.hasAttribute("auto-height") && Math.abs(rect(tiles()[0]).height - 376) < 1, "Grid mode must ignore auto height and retain row sizing");
+    check(tiles()[0].firstElementChild.hasAttribute("auto-height") && rect(tiles()[0]).height < 376, "Individual automatic height must work in the normal grid");
+    for (const screen of ["1080p", "4k"]) {
+      card.setConfig({ ...config, screen, height: "screen" });
+      await settle(card);
+      check(card.shadowRoot.querySelector(".fixed") && card.shadowRoot.querySelector(".fill"), "Automatic height must preserve screen presets and scaling");
+      assertNoOverlap();
+      check(tiles()[0].style.gridRow === "span 1" && tiles()[3].style.gridRow === "span 3", "Screen sizing must retain configured row spans");
+    }
     card.hass = hass;
     const intrinsicWidgets = [
       { type: "clock" },
@@ -323,7 +327,7 @@ try {
       { type: "calendar", entities: [], title: "Calendar" },
       { type: "toggles", entities: [] },
     ];
-    card.setConfig({ ...config, screen: "fill", widgets: intrinsicWidgets.map((widget) => ({ ...widget, auto_height: true, col_span: 1 })) });
+    card.setConfig({ ...config, screen: "fill", widgets: intrinsicWidgets.map((widget) => ({ ...widget, auto_height: true, col_span: 1, row_span: 3 })) });
     await settle(card);
     assertNoOverlap();
     const climate = card.shadowRoot.querySelector("yad-widget-climate");
@@ -342,7 +346,7 @@ try {
       },
     });
     card.setConfig({ ...config, widgets: [
-      { type: "card", card: { type: "markdown" }, auto_height: true, col_span: 2 },
+      { type: "card", card: { type: "markdown" }, auto_height: true, col_span: 2, row_span: 2 },
       { type: "spacer", row_span: 0.25, col_span: 2 },
       { type: "car", charge_entity: "sensor.charge", auto_height: true, visibility: "portrait", col_span: 1 },
     ] });
@@ -353,7 +357,7 @@ try {
     const spacerTop = rect(tiles()[1]).top;
     embedded.style.height = "170px";
     await settle(card);
-    check(Math.abs(rect(tiles()[0]).height - embeddedHeight - 100) < 1 && Math.abs(rect(tiles()[1]).top - spacerTop - 100) < 1, "Asynchronous embedded-card height changes must repack following widgets");
+    check(Math.abs(rect(tiles()[0]).height - embeddedHeight - 100) < 1 && Math.abs(rect(tiles()[1]).top - spacerTop) < 1, "Embedded content should grow without rearranging the grid");
     assertNoOverlap();
     delete window.loadCardHelpers;
     const editor = document.createElement("yad-card-editor");
@@ -363,7 +367,11 @@ try {
     await settle(editor);
     const form = editor.shadowRoot.querySelector("ha-form");
     const fields = form.schema.flatMap((group) => group.schema ?? [group]).map((field) => field.name);
-    check(fields.includes("layout_mode") && !fields.includes("screen") && fields.includes("row_height"), "Compact editor controls must hide screen presets");
+    check(!fields.includes("layout_mode") && fields.includes("screen") && fields.includes("row_height"), "Screen presets must always be available and Compact mode must be removed");
+    editor.setConfig({ ...config, screen: "custom" });
+    await settle(editor);
+    const customFields = editor.shadowRoot.querySelector("ha-form").schema.flatMap((group) => group.schema ?? [group]).map((field) => field.name);
+    check(customFields.includes("screen_width") && customFields.includes("screen_height") && customFields.includes("ui_scale"), "Custom resolution and scaling controls must remain available");
     editor.shadowRoot.querySelector('button[title="Edit"]').click();
     await settle(editor);
     const widgetFields = [...editor.shadowRoot.querySelectorAll("ha-form")].flatMap((form) => form.schema.flatMap((group) => group.schema ?? [group])).map((field) => field.name);
@@ -372,7 +380,7 @@ try {
     card.remove();
     return sizes;
   });
-  console.log(`PASS compact layout: independent packing, spans, capped scrolling, state updates, grid compatibility and intrinsic widgets ${JSON.stringify(compact)}`);
+  console.log(`PASS individual automatic height: stable grid placement, screen presets, caps, state updates and widget controls ${JSON.stringify(automaticHeight)}`);
   await page.clock.install();
   await page.evaluate(async () => {
     window.backgroundRenewals = 0;

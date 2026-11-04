@@ -19,26 +19,24 @@ const number = (name: string, min: number, max: number, unit?: string, step = 1)
 
 const generalSchema = (config: DashboardConfig) => {
   const screen = config.screen ?? "fill";
-  const compact = config.layout_mode === "compact";
   return [
     {
       type: "grid",
       name: "",
       schema: [
-        select("layout_mode", [["grid", "Fixed grid"], ["compact", "Compact (per-widget automatic height)"]]),
-        ...(!compact ? [select("screen", [["fill", "Fill available space"], ...Object.entries(SCREENS).map(([k, v]): [string, string] => [k, v.label]), ["custom", "Custom resolution…"]])] : []),
+        select("screen", [["fill", "Fill available space"], ...Object.entries(SCREENS).map(([k, v]): [string, string] => [k, v.label]), ["custom", "Custom resolution…"]]),
         select("orientation", [
           ["auto", "Auto (detect)"],
           ["landscape", "Landscape"],
           ["portrait", "Portrait"],
         ]),
-        ...(!compact && screen === "custom" ? [number("screen_width", 320, 7680, "px"), number("screen_height", 320, 7680, "px")] : []),
-        ...(!compact && screen !== "fill"
+        ...(screen === "custom" ? [number("screen_width", 320, 7680, "px"), number("screen_height", 320, 7680, "px")] : []),
+        ...(screen !== "fill"
           ? [select("ui_scale", [["auto", "Auto"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["1.75", "175%"], ["2", "200%"], ["3", "300%"]])]
           : []),
         number("columns", 1, 12),
         number("portrait_columns", 1, 12),
-        ...(compact ? [number("row_height", 60, 600, "px", 10)] : screen === "fill"
+        ...(screen === "fill"
           ? [select("height", [["screen", "Fill the screen"], ["auto", "Fixed row height (scrolls)"]], true), number("row_height", 60, 600, "px", 10)]
           : []),
         number("gap", 0, 48, "px"),
@@ -83,7 +81,6 @@ const BACKGROUND_SCHEMA = [
 
 const GENERAL_LABELS: Record<string, string> = {
   screen: "Screen size",
-  layout_mode: "Dashboard layout",
   screen_width: "Screen width",
   screen_height: "Screen height",
   ui_scale: "UI scale",
@@ -128,6 +125,7 @@ export class YadEditor extends LitElement {
 
   public setConfig(config: DashboardConfig): void {
     this._config = { ...config, widgets: config.widgets ?? [] };
+    Reflect.deleteProperty(this._config, "layout_mode");
     if (this._selected !== undefined && this._selected >= this._config.widgets.length) this._selected = undefined;
   }
 
@@ -322,9 +320,7 @@ export class YadEditor extends LitElement {
           .computeLabel=${this._label}
           @value-changed=${this._generalChanged}
         ></ha-form>
-        ${this._config.layout_mode === "compact"
-          ? html`<p class="hint">Compact mode scrolls with its content and ignores screen presets and fill-screen height. Enable Automatic height in each widget's Size & placement; leave it off to keep its row-based size. Long lists are limited by the widget's Maximum automatic height.</p>`
-          : this._config.screen && this._config.screen !== "fill"
+        ${this._config.screen && this._config.screen !== "fill"
           ? html`<p class="hint">
               The dashboard is laid out for this exact resolution and scaled to fit whatever screen it's viewed on, so the
               preview here matches the wall display. <b>UI scale</b> works like your OS display scaling — Auto renders 4K like
@@ -436,15 +432,14 @@ export class YadEditor extends LitElement {
         <ha-form
           .hass=${this.hass}
           .data=${data}
-          .schema=${w.type === "spacer" ? spacerLayoutSchema : this._config!.layout_mode === "compact"
-            ? [...LAYOUT_SCHEMA, { type: "grid", name: "", schema: [
+          .schema=${w.type === "spacer" ? spacerLayoutSchema : [...LAYOUT_SCHEMA, { type: "grid", name: "", schema: [
                 { name: "auto_height", selector: { boolean: {} } },
                 ...(w.auto_height ? [number("auto_height_max", 60, 2000, "px", 10)] : []),
-              ] }]
-            : LAYOUT_SCHEMA}
+              ] }]}
           .computeLabel=${this._label}
           @value-changed=${(e: CustomEvent) => this._widgetChanged(e, index)}
         ></ha-form>
+        ${w.type !== "spacer" ? html`<p class="hint">Automatic height shrinks only this widget within its assigned grid area. Screen size, scaling and other widgets' positions remain unchanged. Long content scrolls within the smaller of the height limit and the available grid area.</p>` : nothing}
       </div>
     `;
   }

@@ -48,7 +48,7 @@ export class YadCard extends LitElement {
   private _onOrientation = (e: MediaQueryListEvent) => (this._portraitMedia = e.matches);
   private _resizeObserver = new ResizeObserver(() => this._measure());
   private _onWindowResize = () => this._measure();
-  private _tileObserver = new ResizeObserver(() => this._packCompact());
+  private _heightObserver = new ResizeObserver(() => this._limitAutomaticHeights());
 
   private _measure(): void {
     const rect = this.getBoundingClientRect();
@@ -83,9 +83,6 @@ export class YadCard extends LitElement {
 
   public setConfig(config: DashboardConfig): void {
     if (!config) throw new Error("Invalid configuration");
-    if (config.layout_mode !== undefined && !["grid", "compact"].includes(config.layout_mode)) {
-      throw new Error("Layout mode must be grid or compact");
-    }
     if (config.widgets !== undefined && !Array.isArray(config.widgets)) throw new Error("`widgets` must be a list");
     for (const w of config.widgets ?? []) {
       if (!w || typeof w !== "object" || !w.type) throw new Error("Every widget needs a `type`");
@@ -100,7 +97,10 @@ export class YadCard extends LitElement {
         }
       }
     }
-    this._config = { ...config, widgets: config.widgets ?? [] };
+    const next = { ...config, widgets: config.widgets ?? [] };
+    // Retire v0.5's dashboard-wide compact setting without breaking saved configurations.
+    Reflect.deleteProperty(next, "layout_mode");
+    this._config = next;
   }
 
   public getCardSize(): number {
@@ -124,7 +124,7 @@ export class YadCard extends LitElement {
     super.disconnectedCallback();
     this._mql.removeEventListener("change", this._onOrientation);
     this._resizeObserver.disconnect();
-    this._tileObserver.disconnect();
+    this._heightObserver.disconnect();
     window.removeEventListener("resize", this._onWindowResize);
     window.clearTimeout(this._backgroundTimer);
     this._backgroundRequest++;
@@ -132,12 +132,11 @@ export class YadCard extends LitElement {
   }
 
   protected updated(): void {
-    this._tileObserver.disconnect();
-    if (this._config?.layout_mode === "compact") {
-      this.renderRoot.querySelectorAll<HTMLElement>(".tile").forEach((tile) => this._tileObserver.observe(tile));
-      this._packCompact();
-      const widgets = this.renderRoot.querySelectorAll<HTMLElement & { updateComplete?: Promise<boolean> }>(".tile > *");
-      void Promise.all([...widgets].map((widget) => widget.updateComplete)).then(() => this._packCompact());
+    this._heightObserver.disconnect();
+    const grid = this.renderRoot.querySelector<HTMLElement>(".grid");
+    if (grid && this.renderRoot.querySelector(".auto-height")) {
+      this._heightObserver.observe(grid);
+      this._limitAutomaticHeights();
     }
     const source = this._config?.background_media?.media_content_id || this._config?.background;
     if (source === this._backgroundKey) return;
@@ -146,14 +145,21 @@ export class YadCard extends LitElement {
     void this._resolveBackground(source);
   }
 
-  private _packCompact(): void {
-    if (this._config?.layout_mode !== "compact" || !this.isConnected) return;
-    const gap = this._config.gap ?? DEFAULTS.gap;
-    // One-pixel grid tracks preserve column spans while packing independently of fixed row heights.
-    this.renderRoot.querySelectorAll<HTMLElement>(".tile").forEach((tile) => {
-      const rows = Math.max(1, Math.ceil(tile.offsetHeight + gap));
-      const span = `span ${rows}`;
-      if (tile.style.gridRow !== span) tile.style.gridRow = span;
+  private _limitAutomaticHeights(): void {
+    const grid = this.renderRoot.querySelector<HTMLElement>(".grid");
+    if (!grid || !this.isConnected) return;
+    const gridStyle = getComputedStyle(grid);
+    const track = parseFloat(gridStyle.gridTemplateRows);
+    const gap = parseFloat(gridStyle.rowGap) || 0;
+    if (!Number.isFinite(track)) return;
+    this.renderRoot.querySelectorAll<HTMLElement>(".tile.auto-height").forEach((tile) => {
+      const rows = Number(tile.style.gridRow.match(/span (\d+)/)?.[1] ?? 1);
+      const style = getComputedStyle(tile);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+        + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      const max = parseFloat(style.getPropertyValue("--auto-max")) || 600;
+      const contentHeight = Math.max(0, Math.min(max, rows * track + (rows - 1) * gap) - padding);
+      tile.style.setProperty("--auto-content-max", `${contentHeight}px`);
     });
   }
 
@@ -217,18 +223,11 @@ export class YadCard extends LitElement {
     const colSpan = Math.min(columns, Math.max(1, (portrait ? merged.portrait_col_span : undefined) ?? merged.col_span ?? 1));
     const requestedRows = (portrait ? merged.portrait_row_span : undefined) ?? merged.row_span ?? 1;
     const rowSpan = w.type === "spacer" ? requestedRows : Math.max(1, Math.round(requestedRows));
-    const compact = this._config!.layout_mode === "compact";
-    const autoHeight = compact && !!merged.auto_height && w.type !== "spacer";
-    const rowHeight = this._config!.row_height ?? DEFAULTS.row_height;
-    const gap = this._config!.gap ?? DEFAULTS.gap;
-    const height = w.type === "spacer"
-      ? Math.max(1, rowSpan * rowHeight - (1 - rowSpan) * gap)
-      : rowSpan * rowHeight + (rowSpan - 1) * gap;
+    const autoHeight = !!merged.auto_height && w.type !== "spacer";
     const style = {
       gridColumn: `span ${colSpan}`,
-      gridRow: compact ? undefined : `span ${Math.round(rowSpan * (quarters ? 4 : 1))}`,
-      ...(compact ? {
-        height: autoHeight ? "auto" : `${height}px`,
+      gridRow: `span ${Math.round(rowSpan * (quarters ? 4 : 1))}`,
+      ...(autoHeight ? {
         "--auto-max": `${merged.auto_height_max ?? 600}px`,
       } : {}),
     };
@@ -237,7 +236,7 @@ export class YadCard extends LitElement {
       return html`<div class="tile error" style=${styleMap(style)}>Unknown widget type “${w.type}”</div>`;
     }
     const tag = unsafeStatic(def.tag);
-    return html`<div class=${classMap({ tile: true, transparent: !!merged.transparent, [`w-${w.type}`]: true })} style=${styleMap(style)}>
+    return html`<div class=${classMap({ tile: true, "auto-height": autoHeight, transparent: !!merged.transparent, [`w-${w.type}`]: true })} style=${styleMap(style)}>
       ${staticHtml`<${tag} .hass=${this.hass} .config=${merged} .displayOnly=${displayOnly} .autoHeight=${autoHeight}></${tag}>`}
     </div>`;
   }
@@ -261,14 +260,13 @@ export class YadCard extends LitElement {
     const c = { ...DEFAULTS, ...this._config };
     const portrait = this._portrait;
     const columns = Math.max(1, portrait ? c.portrait_columns : c.columns);
-    const compact = c.layout_mode === "compact";
-    const fixed = compact ? undefined : this._fixedScreen(c, portrait);
-    const fill = !compact && (!!fixed || c.height !== "auto");
+    const fixed = this._fixedScreen(c, portrait);
+    const fill = !!fixed || c.height !== "auto";
     const visible = c.widgets.filter((w) => {
       const v = w.visibility ?? "all";
       return v === "all" || (v === "portrait") === portrait;
     });
-    const quarters = !compact && visible.some((w) => w.type === "spacer");
+    const quarters = visible.some((w) => w.type === "spacer");
     const rowGap = quarters ? Math.min(c.gap, Math.max(0, (c.row_height - 4) / 3)) : c.gap;
 
     const themeClass = this._themeClass;
@@ -300,7 +298,7 @@ export class YadCard extends LitElement {
         visibility: this._size.width ? "visible" : "hidden",
       };
     } else {
-      vars.height = compact ? "auto" : c.height === "screen" ? (this.preview ? "640px" : "100dvh") : c.height === "auto" ? "auto" : c.height;
+      vars.height = c.height === "screen" ? (this.preview ? "640px" : "100dvh") : c.height === "auto" ? "auto" : c.height;
     }
 
     return html`
@@ -312,7 +310,6 @@ export class YadCard extends LitElement {
           landscape: !portrait,
           fill,
           fixed: !!fixed,
-          compact,
           "display-only": c.display_only,
           "hide-cursor": c.hide_cursor,
           "has-bg": !!this._backgroundUrl,
@@ -396,12 +393,9 @@ export class YadCard extends LitElement {
         grid-auto-rows: minmax(0, 1fr);
       }
       .fill.quarter-rows .grid { grid-auto-rows: minmax(0, 1fr); }
-      .compact .grid {
-        grid-auto-rows: 1px;
-        row-gap: 0;
-        align-items: start;
-      }
-      .compact .tile {
+      .tile.auto-height {
+        align-self: start;
+        max-height: 100%;
         box-sizing: border-box;
         --tile-padding: clamp(14px, 1.6cqw, 22px);
         --auto-content-max: max(16px, calc(var(--auto-max, 600px) - 2 * var(--tile-padding) - 2px));

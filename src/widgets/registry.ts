@@ -289,6 +289,6 @@ export const LABELS: Record<string, string> = {
   portrait_row_span: "Portrait height",
   visibility: "Show in",
   transparent: "No background",
-  auto_height: "Automatic height (compact layout)",
+  auto_height: "Automatic height",
   auto_height_max: "Maximum automatic height",
 };

@@ -51,7 +51,7 @@ export interface WidgetConfig {
   visibility?: "all" | "landscape" | "portrait";
   /** Render without the tile background (useful for the clock). */
   transparent?: boolean;
-  /** Size to content in the compact dashboard layout. */
+  /** Shrink this tile to its content while retaining its grid placement. */
   auto_height?: boolean;
   auto_height_max?: number;
   [key: string]: any;
@@ -59,7 +59,6 @@ export interface WidgetConfig {
 
 export interface DashboardConfig {
   type: string;
-  layout_mode?: "grid" | "compact";
   /** Light/dark mode, or "ha" to use the active Home Assistant theme. */
   theme?: "auto" | "light" | "dark" | "ha";
   /** A key of PALETTES, or "custom". */

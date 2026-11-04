@@ -167,7 +167,6 @@ const update = () => {
 
 card.setConfig({
   type: "custom:yad-card",
-  layout_mode: params.get("layout") === "compact" ? "compact" : "grid",
   theme: params.get("theme") ?? "auto",
   orientation: params.get("orientation") ?? "auto",
   display_only: params.get("display_only") === "1",
@@ -214,7 +213,7 @@ card.setConfig({
       { type: "spacer", style: "line", col_span: 4, row_span: 0.25, portrait_col_span: 2 },
       { type: "car", title: "Family car", charge_entity: "sensor.car_charge", range_entity: "sensor.car_range", location_entity: "device_tracker.car", plugged_in_entity: "binary_sensor.car_plug", charging_entity: "binary_sensor.car_charging", col_span: 2, row_span: 2 },
     ] : []),
-  ].map((widget) => ({ ...widget, auto_height: params.get("layout") === "compact" && widget.type !== "spacer" })),
+  ].map((widget) => ({ ...widget, auto_height: params.get("auto_height") === "1" && widget.type !== "spacer" })),
 });
 update();
 document.body.appendChild(card);
