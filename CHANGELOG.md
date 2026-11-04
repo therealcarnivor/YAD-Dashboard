@@ -7,6 +7,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-04
+
 ### Changed
 
 - Removed the dashboard-wide Compact layout. Automatic height is now controlled directly in each widget's Size & placement and shrinks only that tile within the normal grid.
@@ -89,7 +91,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 - Light, dark and Home Assistant theme modes with an accent colour override.
 - Visual editor for adding, ordering and configuring widgets.
 
-[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.3.0...v0.3.1

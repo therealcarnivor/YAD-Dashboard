@@ -1,6 +1,6 @@
 {
   "name": "yad-dashboard",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "A modular, widget-based, kiosk-friendly Home Assistant dashboard card (HACS).",
   "type": "module",
