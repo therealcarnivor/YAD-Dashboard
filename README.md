@@ -48,6 +48,17 @@ YAD uses [semantic versioning](https://semver.org/) with [GitHub releases](https
 
 Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaScript module** resource.
 
+### Troubleshooting a missing card
+
+`Custom element doesn't exist: yad-card` and a missing card-picker entry both mean the browser has not registered the card. Check the script request before reinstalling:
+
+1. Open `/hacsfiles/YAD-Dashboard/yad.js` on **the same Home Assistant address you use for your dashboard**. It must return JavaScript, not a 404 or the Home Assistant login page. Folder names are case-sensitive.
+2. If that returns 404 despite `yad.js` existing in `<config>/www/community/YAD-Dashboard/`, try `/local/community/YAD-Dashboard/yad.js` on the same address. Home Assistant serves its `www` folder through `/local`; this checks file serving independently of HACS's `/hacsfiles` endpoint.
+   - If `/local/community/YAD-Dashboard/yad.js` returns JavaScript, use that URL as the **JavaScript module** resource temporarily, replacing rather than adding to the `/hacsfiles` entry. Investigate the HACS endpoint and any reverse proxy separately.
+   - If both return 404, check that the file is in the running Home Assistant instance's config folder and that your proxy forwards these paths. Changing the card type or reinstalling the bundle cannot fix an HTTP 404.
+3. Keep only one resource for YAD. Do not load both the old Hearth bundle and the new bundle, or the same bundle through two different URLs.
+4. Reload the dashboard and check the browser console for `YAD 0.3.0` (or the version you installed). If the request succeeds but there is no banner, inspect console errors for a script failure. A 404 alone is not evidence of a cached failure.
+
 ## Setting up the dashboard
 
 1. **Settings → Dashboards → Add dashboard** → *New dashboard from scratch*.
