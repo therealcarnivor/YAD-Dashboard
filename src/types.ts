@@ -36,6 +36,8 @@ export type WidgetType =
   | "sensors"
   | "media"
   | "people"
+  | "car"
+  | "spacer"
   | "card";
 
 export interface WidgetConfig {
@@ -61,6 +63,12 @@ export interface DashboardConfig {
   custom_palette?: CustomPalette;
   accent_color?: string;
   background?: string;
+  background_media?: { media_content_id: string; media_content_type?: string };
+  /** Image opacity as a percentage, without fading widgets. */
+  background_opacity?: number;
+  background_blur?: number;
+  background_fit?: "cover" | "contain";
+  background_position?: string;
   orientation?: "auto" | "landscape" | "portrait";
   /** "fill" uses whatever space is available, or a key of SCREENS / "custom" for a fixed resolution. */
   screen?: string;

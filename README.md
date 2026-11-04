@@ -19,13 +19,15 @@ One card, in a **panel view**, renders a full-screen grid of widgets that you co
 | --- | --- |
 | `clock` | Time, date and a friendly greeting ("Good morning, Alex") |
 | `weather` | Current conditions, high/low, humidity & wind, daily/hourly forecast |
-| `calendar` | Agenda across one or more calendars, grouped by day, colour-coded |
+| `calendar` | Agenda with calendar initials/icons, weekend highlighting and optional weekend filtering |
 | `energy` | Live power, 24h usage graph, energy today, solar, battery and cost |
 | `climate` | Thermostat dial with current/target temperature, +/- and HVAC modes |
 | `toggles` | Lights & switches (also fans, scenes, scripts, covers, locks, buttons) |
 | `sensors` | Any sensors as tiles or a list |
 | `media` | Now playing with artwork and transport controls |
 | `people` | Who's home, with avatars and presence |
+| `car` | Vehicle charge/fuel, range, location, EV connection/charging and optional extra sensors |
+| `spacer` | Quarter-row blank space, horizontal line or dashed divider |
 | `card` | **Any existing Home Assistant card** (built-in or custom) embedded as a widget |
 
 ## Installation
@@ -87,6 +89,11 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | `custom_palette` | – | Your own colours when `palette: custom` — see [Colour palettes](#colour-palettes) |
 | `accent_color` | palette | Override the accent colour of any palette, e.g. `"#7c9a7e"` |
 | `background` | – | Optional background image URL (tiles become frosted glass) |
+| `background_media` | – | HA media selector value (`media_content_id`, optional `media_content_type`); use the editor to browse media or upload an image |
+| `background_opacity` | `100` | Image opacity, 0–100%; widgets are not faded |
+| `background_blur` | `0` | Image blur in px (0–30) |
+| `background_fit` | `cover` | `cover` fills the screen; `contain` shows the whole image |
+| `background_position` | `center` | Image alignment (`center`, `top`, `bottom`, `left`, `right`) |
 | `orientation` | `auto` | `auto` (detects screen orientation), `landscape` or `portrait` |
 | `screen` | `fill` | `fill` uses the available space, or lay out for a fixed resolution: `720p`, `1080p`, `1440p`, `4k`, `wsvga` (1024×600), `wxga` (1280×800), `wuxga` (1920×1200), `ipad` (2048×1536), or `custom` — see [Screen sizes](#screen-sizes) |
 | `screen_width` / `screen_height` | – | Resolution in px when `screen: custom` |
@@ -119,7 +126,7 @@ Widgets are packed into the grid in order, filling gaps automatically.
 
 **weather** — `entity` (required), `forecast_type` (`daily`, `hourly`, `twice_daily`), `forecast_count` (5), `show_details` (true).
 
-**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, color: "#hex" }` to set colours), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (5).
+**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (5). `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
 
 **energy** — `power_entity` (current consumption in W or kW), `today_entity`, `solar_power_entity`, `solar_today_entity`, `battery_entity`, `cost_entity`, `show_graph` (true), `hours_to_show` (24). All optional — show only what you have.
 
@@ -134,6 +141,47 @@ Widgets are packed into the grid in order, filling gaps automatically.
 **people** — `entities` (person entities), `show_state` (true).
 
 **card** — `card`: any Lovelace card configuration.
+
+**car** — `title`, `charge_entity` and `fuel_entity` (percentage sensors), `range_entity` (sensor), `location_entity` (device tracker), `plugged_in_entity` and `charging_entity` (binary sensors or sensors). Add extra vehicle data with `entities` (strings or `{ entity, name, icon }`). Each field is optional; unconfigured, missing, unknown and unavailable entities are omitted, but valid zero values and off states remain visible. Tap a reading for more info unless display-only mode is enabled.
+
+**spacer** — `style` (`blank`, `line`, `dashed`), optional `line_color`, `row_span` (0.25 by default; 0.25, 0.5, 0.75 or 1), and `portrait_row_span` with the same choices. The default is transparent and full-width (up to four columns). Other widgets keep whole-row heights. A spacer switches the visible grid to quarter-row tracks: four tracks **including their internal spacing** equal a normal row. With `height: auto`, `row_height: 180` and `gap: 0`, a quarter spacer is 45px; with the default 16px gap it is 33px and a normal row stays 180px. Extremely large vertical gaps are reduced if needed to keep quarter tracks positive. Filled-screen and fixed-screen modes scale tracks to the available height. Dense packing still applies; use a spacer spanning all your columns to reserve a whole horizontal strip.
+
+### Background images
+
+In the editor's **Background image** section, use the native HA image picker to browse media or upload a file. Uploading requires a user with permission to upload images. You can still enter an ordinary image URL instead; changing the media selection clears the URL, and entering a URL clears the media selection. Opacity affects only the image, not the dashboard's text or widgets. Media-source URLs are resolved at runtime and renewed on long-running displays; access and load errors are shown on the dashboard.
+
+The **Colour palette** section is collapsed initially. Expand it to select a palette, customise colours or change the accent.
+
+```yaml
+background_media:
+  media_content_id: media-source://media_source/local/wallpaper.jpg
+  media_content_type: image/jpeg
+background_opacity: 40
+background_blur: 2
+background_fit: cover
+```
+
+Use the picker to obtain the correct media ID for your installation.
+
+### Vehicle and divider example
+
+```yaml
+widgets:
+  - type: car
+    title: Family car
+    charge_entity: sensor.car_battery
+    range_entity: sensor.car_range
+    location_entity: device_tracker.car
+    plugged_in_entity: binary_sensor.car_plugged_in
+    charging_entity: binary_sensor.car_charging
+    col_span: 2
+    row_span: 2
+  - type: spacer
+    style: line
+    col_span: 4
+    row_span: 0.25
+    portrait_row_span: 0.5
+```
 
 ### Example
 
@@ -231,7 +279,7 @@ npm run demo       # builds demo/build/demo.js with a mocked Home Assistant
 npx http-server .  # then open http://localhost:8080/demo/
 ```
 
-The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0` and `?display_only=1`.
+The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0`, `?display_only=1` and `?showcase=1` (vehicle, divider and weekend highlighting).
 
 `dist/yad.js` is committed so HACS can install straight from the repository, and each GitHub release also includes it as a download.
 

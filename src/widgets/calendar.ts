@@ -2,7 +2,7 @@ import { css, html, nothing, PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { EntityRef, WidgetConfig } from "../types";
-import { addDays, formatTime, normaliseEntities, parseDate, relativeDayLabel, startOfDay } from "../utils";
+import { addDays, entityName, formatTime, normaliseEntities, parseDate, relativeDayLabel, startOfDay } from "../utils";
 import { YadWidget } from "./base";
 
 export interface CalendarConfig extends WidgetConfig {
@@ -12,6 +12,9 @@ export interface CalendarConfig extends WidgetConfig {
   max_events?: number;
   show_location?: boolean;
   refresh_minutes?: number;
+  show_weekends?: boolean;
+  highlight_weekends?: boolean;
+  show_calendar_badge?: boolean;
 }
 
 interface RawEvent {
@@ -28,6 +31,8 @@ interface CalEvent {
   allDay: boolean;
   location?: string;
   color: string;
+  calendarName: string;
+  calendarIcon?: string;
 }
 
 const PALETTE = ["var(--h-accent)", "var(--h-sage)", "var(--h-sky)", "var(--h-amber)", "#b07aa1", "#c9a27e"];
@@ -85,6 +90,8 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
               allDay,
               location: ev.location,
               color: cal.color ?? PALETTE[i % PALETTE.length],
+              calendarName: entityName(this.hass?.states[cal.entity], cal.name, cal.entity),
+              calendarIcon: cal.icon,
             };
           });
         }),
@@ -106,21 +113,29 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     return `${fmt(e.start)} – ${fmt(e.end)}`;
   }
 
+  private _displayDay(e: CalEvent, today: Date): Date | undefined {
+    let day = new Date(Math.max(startOfDay(e.start).getTime(), today.getTime()));
+    if (this.config.show_weekends === false) {
+      while (day.getDay() === 0 || day.getDay() === 6) day = addDays(day, 1);
+    }
+    return day < e.end && day < addDays(today, this.config.days ?? 7) ? day : undefined;
+  }
+
   protected render() {
     const title = this.config.title ?? "Coming up";
     const header = html`<div class="head"><ha-icon icon="mdi:calendar-heart"></ha-icon>${title}</div>`;
     if (this._error) return html`${header}<div class="empty"><ha-icon icon="mdi:calendar-alert"></ha-icon>${this._error}</div>`;
     if (!this._events) return html`${header}<div class="empty">Loading…</div>`;
 
-    const events = this._events.slice(0, this.config.max_events ?? 8);
+    const today = startOfDay(new Date());
+    const events = this._events.filter((e) => this._displayDay(e, today)).slice(0, this.config.max_events ?? 8);
     if (!events.length) {
       return html`${header}<div class="empty"><ha-icon icon="mdi:sofa-outline"></ha-icon>Nothing planned — enjoy the downtime</div>`;
     }
 
-    const today = startOfDay(new Date());
     const groups = new Map<number, CalEvent[]>();
     for (const e of events) {
-      const day = Math.max(startOfDay(e.start).getTime(), today.getTime());
+      const day = this._displayDay(e, today)!.getTime();
       if (!groups.has(day)) groups.set(day, []);
       groups.get(day)!.push(e);
     }
@@ -128,12 +143,17 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     return html`
       ${header}
       <div class="list scroll">
-        ${[...groups.entries()].map(
-          ([day, evs]) => html`
-            <div class="day-label ${day === today.getTime() ? "today" : ""}">${relativeDayLabel(this.hass, new Date(day))}</div>
+        ${[...groups.entries()].map(([day, evs]) => {
+          const weekend = !!this.config.highlight_weekends && [0, 6].includes(new Date(day).getDay());
+          return html`
+            <div class="day-label ${day === today.getTime() ? "today" : ""} ${weekend ? "weekend" : ""}">${relativeDayLabel(this.hass, new Date(day))}${weekend ? html`<ha-icon icon="mdi:sofa-outline" aria-label="Weekend"></ha-icon>` : nothing}</div>
             ${evs.map(
-              (e) => html`<div class="event">
-                <span class="bar" style="background:${e.color}"></span>
+              (e) => html`<div class="event ${weekend ? "weekend" : ""}">
+                <span class="bar ${this.config.show_calendar_badge !== false ? "badge" : ""}" style="background:${e.color}" title=${e.calendarName} aria-label=${e.calendarName}>
+                  ${this.config.show_calendar_badge === false ? nothing : e.calendarIcon
+                    ? html`<ha-icon icon=${e.calendarIcon}></ha-icon>`
+                    : Array.from(e.calendarName)[0]?.toLocaleUpperCase()}
+                </span>
                 <div class="body">
                   <div class="summary">${e.summary}</div>
                   <div class="meta muted num">
@@ -142,8 +162,8 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
                 </div>
               </div>`,
             )}
-          `,
-        )}
+          `;
+        })}
       </div>
     `;
   }
@@ -170,6 +190,9 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
       .day-label.today {
         color: var(--h-accent);
       }
+      .day-label.weekend { color: var(--h-warm, var(--h-accent)); display: flex; align-items: center; gap: 8px; }
+      .day-label.weekend ha-icon { --mdc-icon-size: 16px; }
+      .event.weekend { outline: 1px solid var(--h-warm, var(--h-accent)); background: var(--h-amber-soft); }
       .day-label:first-child {
         margin-top: 0;
       }
@@ -186,6 +209,8 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
         border-radius: 4px;
         flex: none;
       }
+      .bar.badge { width: 26px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem; color: #fff; text-shadow: 0 1px 3px #000; }
+      .bar ha-icon { --mdc-icon-size: 18px; }
       .body {
         min-width: 0;
       }

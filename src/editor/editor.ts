@@ -5,7 +5,7 @@ import { SCREENS } from "../screens";
 import type { DashboardConfig, HomeAssistant, WidgetConfig, WidgetType } from "../types";
 import { fireEvent } from "../utils";
 import { VERSION } from "../version";
-import { LABELS, LAYOUT_SCHEMA, WIDGETS } from "../widgets/registry";
+import { LABELS, LAYOUT_SCHEMA, spacerLayoutSchema, WIDGETS } from "../widgets/registry";
 import "./color-picker";
 
 const select = (name: string, options: [string, string][], custom = false) => ({
@@ -58,7 +58,6 @@ const generalSchema = (config: DashboardConfig) => {
 };
 
 const BEHAVIOUR_SCHEMA = [
-  { name: "background", selector: { text: {} } },
   {
     type: "grid",
     name: "",
@@ -67,6 +66,17 @@ const BEHAVIOUR_SCHEMA = [
       { name: "hide_cursor", selector: { boolean: {} } },
     ],
   },
+];
+
+const BACKGROUND_SCHEMA = [
+  { name: "background_media", selector: { media: { accept: ["image/*"], image_upload: true } } },
+  { name: "background", selector: { text: {} } },
+  { type: "grid", name: "", schema: [
+    number("background_opacity", 0, 100, "%"),
+    number("background_blur", 0, 30, "px"),
+    select("background_fit", [["cover", "Fill (cover)"], ["contain", "Fit whole image"]]),
+    select("background_position", [["center", "Centre"], ["top", "Top"], ["bottom", "Bottom"], ["left", "Left"], ["right", "Right"]]),
+  ] },
 ];
 
 const GENERAL_LABELS: Record<string, string> = {
@@ -82,6 +92,11 @@ const GENERAL_LABELS: Record<string, string> = {
   row_height: "Row height (when not filling screen)",
   gap: "Spacing",
   background: "Background image URL (optional)",
+  background_media: "Choose from HA media or upload an image",
+  background_opacity: "Image opacity",
+  background_blur: "Image blur",
+  background_fit: "Image fit",
+  background_position: "Image position",
   display_only: "Display only (no touch)",
   hide_cursor: "Hide mouse cursor",
 };
@@ -140,6 +155,21 @@ export class YadEditor extends LitElement {
     ev.stopPropagation();
     const { widgets, ...rest } = ev.detail.value as DashboardConfig;
     this._commit({ ...clean(rest), widgets: this._config!.widgets } as DashboardConfig);
+  }
+
+  private _backgroundChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const value = ev.detail.value as DashboardConfig;
+    const mediaChanged = value.background_media?.media_content_id !== this._config?.background_media?.media_content_id;
+    const urlChanged = value.background !== this._config?.background;
+    this._set({
+      background_media: urlChanged && !mediaChanged ? undefined : value.background_media,
+      background: mediaChanged && value.background_media ? undefined : value.background,
+      background_opacity: value.background_opacity,
+      background_blur: value.background_blur,
+      background_fit: value.background_fit,
+      background_position: value.background_position,
+    });
   }
 
   private _updateWidget(index: number, widget: WidgetConfig): void {
@@ -224,8 +254,8 @@ export class YadEditor extends LitElement {
         <i style="background:${c.surface}"></i><i style="background:${c.accent}"></i><i style="background:${c.success}"></i><i style="background:${c.text}"></i>
       </span>`;
 
-    return html`<div class="section">
-      <div class="section-title"><ha-icon icon="mdi:palette-outline"></ha-icon>Colour palette</div>
+    return html`<details class="section palette-section">
+      <summary class="section-title"><ha-icon icon="mdi:palette-outline"></ha-icon>Colour palette · ${usingHa ? "Home Assistant" : PALETTES[palette]?.label ?? "Custom"}</summary>
       ${usingHa ? html`<p class="hint">Palettes are ignored while “Use my HA theme” is selected above.</p>` : nothing}
       <div class="palettes ${usingHa ? "disabled" : ""}">
         ${Object.entries(PALETTES).map(
@@ -272,7 +302,7 @@ export class YadEditor extends LitElement {
           this._set({ accent_color: e.detail.value });
         }}
       ></yad-color-picker>
-    </div>`;
+    </details>`;
   }
 
   protected render() {
@@ -299,6 +329,13 @@ export class YadEditor extends LitElement {
       </div>
 
       ${this._renderLook()}
+
+      <div class="section">
+        <div class="section-title"><ha-icon icon="mdi:image-outline"></ha-icon>Background image</div>
+        <ha-form .hass=${this.hass} .data=${{ background_opacity: 100, background_blur: 0, background_fit: "cover", background_position: "center", ...this._config }}
+          .schema=${BACKGROUND_SCHEMA} .computeLabel=${this._label} @value-changed=${this._backgroundChanged}></ha-form>
+        <p class="hint">Browse Home Assistant media or upload an image with the image picker. Alternatively enter an image URL. Selecting one replaces the other.</p>
+      </div>
 
       <div class="section">
         <div class="section-title"><ha-icon icon="mdi:tune-variant"></ha-icon>Behaviour</div>
@@ -394,7 +431,7 @@ export class YadEditor extends LitElement {
         <ha-form
           .hass=${this.hass}
           .data=${data}
-          .schema=${LAYOUT_SCHEMA}
+          .schema=${w.type === "spacer" ? spacerLayoutSchema : LAYOUT_SCHEMA}
           .computeLabel=${this._label}
           @value-changed=${(e: CustomEvent) => this._widgetChanged(e, index)}
         ></ha-form>
@@ -420,6 +457,9 @@ export class YadEditor extends LitElement {
     .section-title ha-icon {
       color: var(--primary-color);
     }
+    summary.section-title { cursor: pointer; }
+    summary.section-title::before { content: "+"; }
+    details[open] > summary.section-title::before { content: "-"; }
     .list {
       display: flex;
       flex-direction: column;

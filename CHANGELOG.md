@@ -7,6 +7,18 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- HA media browsing and native image uploads for backgrounds, with image-only opacity, blur, fit and position controls, signed-URL renewal and visible loading errors.
+- Calendar weekend highlighting and show/hide controls, plus calendar initials or custom icons in widened colour bars.
+- A vehicle widget for optional charge/fuel, range, tracker location, EV connection/charging and additional sensors; unavailable or unconfigured readings are omitted.
+- Quarter-row spacer widgets with blank, solid-line and dashed-line styles, including portrait height overrides.
+- Production-browser tests for background resolution and source changes, calendar filtering and badges, sparse vehicle data and quarter-row geometry.
+
+### Changed
+
+- The editor's colour palette section is collapsible and starts closed.
+
 ## [0.3.1] - 2026-11-04
 
 ### Added

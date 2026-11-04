@@ -39,6 +39,11 @@ export class YadCard extends LitElement {
   @state() private _portraitMedia = window.matchMedia("(orientation: portrait)").matches;
   /** Available width and distance from the top of the page, used to fit fixed screen sizes. */
   @state() private _size = { width: 0, top: 0 };
+  @state() private _backgroundUrl?: string;
+  @state() private _backgroundError?: string;
+  private _backgroundKey?: string;
+  private _backgroundRequest = 0;
+  private _backgroundTimer?: number;
   private _mql = window.matchMedia("(orientation: portrait)");
   private _onOrientation = (e: MediaQueryListEvent) => (this._portraitMedia = e.matches);
   private _resizeObserver = new ResizeObserver(() => this._measure());
@@ -80,6 +85,13 @@ export class YadCard extends LitElement {
     if (config.widgets !== undefined && !Array.isArray(config.widgets)) throw new Error("`widgets` must be a list");
     for (const w of config.widgets ?? []) {
       if (!w || typeof w !== "object" || !w.type) throw new Error("Every widget needs a `type`");
+      if (w.type === "spacer") {
+        for (const field of ["row_span", "portrait_row_span"] as const) {
+          if (w[field] !== undefined && ![0.25, 0.5, 0.75, 1].includes(w[field])) {
+            throw new Error(`Spacer ${field} must be 0.25, 0.5, 0.75 or 1`);
+          }
+        }
+      }
     }
     this._config = { ...config, widgets: config.widgets ?? [] };
   }
@@ -98,6 +110,7 @@ export class YadCard extends LitElement {
     this._portraitMedia = this._mql.matches;
     this._resizeObserver.observe(this);
     window.addEventListener("resize", this._onWindowResize);
+    this.requestUpdate();
   }
 
   disconnectedCallback(): void {
@@ -105,6 +118,43 @@ export class YadCard extends LitElement {
     this._mql.removeEventListener("change", this._onOrientation);
     this._resizeObserver.disconnect();
     window.removeEventListener("resize", this._onWindowResize);
+    window.clearTimeout(this._backgroundTimer);
+    this._backgroundRequest++;
+    this._backgroundKey = undefined;
+  }
+
+  protected updated(): void {
+    const source = this._config?.background_media?.media_content_id || this._config?.background;
+    if (source === this._backgroundKey) return;
+    if (source?.startsWith("media-source://") && !this.hass) return;
+    this._backgroundKey = source;
+    void this._resolveBackground(source);
+  }
+
+  private async _resolveBackground(source?: string): Promise<void> {
+    const request = ++this._backgroundRequest;
+    window.clearTimeout(this._backgroundTimer);
+    this._backgroundError = undefined;
+    if (!source?.startsWith("media-source://")) {
+      this._backgroundUrl = source;
+      return;
+    }
+    try {
+      const media = await this.hass!.callWS<{ url: string; mime_type: string }>({
+        type: "media_source/resolve_media",
+        media_content_id: source,
+      });
+      if (request !== this._backgroundRequest) return;
+      if (!media.url || !media.mime_type?.startsWith("image/")) throw new Error("Select an image for the background");
+      this._backgroundUrl = media.url;
+      // Media-source URLs are signed for 24 hours; refresh on long-running displays.
+      this._backgroundTimer = window.setTimeout(() => void this._resolveBackground(source), 23 * 60 * 60 * 1000);
+    } catch (error) {
+      if (request !== this._backgroundRequest) return;
+      this._backgroundUrl = undefined;
+      this._backgroundError = error instanceof Error ? error.message : "Could not load background media";
+      this._backgroundTimer = window.setTimeout(() => void this._resolveBackground(source), 60_000);
+    }
   }
 
   protected shouldUpdate(changed: PropertyValues): boolean {
@@ -134,13 +184,14 @@ export class YadCard extends LitElement {
     return t;
   }
 
-  private _renderWidget(w: WidgetConfig, portrait: boolean, columns: number) {
+  private _renderWidget(w: WidgetConfig, portrait: boolean, columns: number, quarters: boolean) {
     const def = WIDGETS[w.type];
     const displayOnly = !!this._config!.display_only;
     const merged = { ...def?.defaults, ...w };
     const colSpan = Math.min(columns, Math.max(1, (portrait ? merged.portrait_col_span : undefined) ?? merged.col_span ?? 1));
-    const rowSpan = Math.max(1, (portrait ? merged.portrait_row_span : undefined) ?? merged.row_span ?? 1);
-    const style = { gridColumn: `span ${colSpan}`, gridRow: `span ${rowSpan}` };
+    const requestedRows = (portrait ? merged.portrait_row_span : undefined) ?? merged.row_span ?? 1;
+    const rowSpan = w.type === "spacer" ? requestedRows : Math.max(1, Math.round(requestedRows));
+    const style = { gridColumn: `span ${colSpan}`, gridRow: `span ${Math.round(rowSpan * (quarters ? 4 : 1))}` };
 
     if (!def) {
       return html`<div class="tile error" style=${styleMap(style)}>Unknown widget type “${w.type}”</div>`;
@@ -176,20 +227,21 @@ export class YadCard extends LitElement {
       const v = w.visibility ?? "all";
       return v === "all" || (v === "portrait") === portrait;
     });
+    const quarters = visible.some((w) => w.type === "spacer");
+    const rowGap = quarters ? Math.min(c.gap, Math.max(0, (c.row_height - 4) / 3)) : c.gap;
 
     const themeClass = this._themeClass;
     const vars: Record<string, string> = {
       "--cols": String(columns),
       "--gap": `${c.gap}px`,
       "--row-height": `${c.row_height}px`,
+      "--row-gap": `${rowGap}px`,
       ...(themeClass === "ha" ? {} : paletteVars(resolvePalette(c.palette, themeClass === "dark", c.custom_palette), themeClass === "dark")),
     };
     if (c.accent_color) {
       vars["--h-accent"] = c.accent_color;
       vars["--h-accent-soft"] = `color-mix(in srgb, ${c.accent_color} 15%, transparent)`;
     }
-    if (c.background) vars["--h-bg-image"] = `url("${c.background}")`;
-
     let canvasStyle: Record<string, string> = {};
     if (fixed) {
       // Scale the fixed-resolution canvas to fit the space we have, keeping its aspect ratio.
@@ -221,14 +273,25 @@ export class YadCard extends LitElement {
           fixed: !!fixed,
           "display-only": c.display_only,
           "hide-cursor": c.hide_cursor,
-          "has-bg": !!c.background,
+          "has-bg": !!this._backgroundUrl,
+          "quarter-rows": quarters,
         })}
         style=${styleMap(vars)}
       >
+        ${this._backgroundUrl ? html`<img class="background-image" src=${this._backgroundUrl} alt=""
+          style=${styleMap({
+            opacity: String(Math.min(100, Math.max(0, c.background_opacity ?? 100)) / 100),
+            filter: `blur(${Math.min(30, Math.max(0, c.background_blur ?? 0))}px)`,
+            objectFit: c.background_fit ?? "cover",
+            objectPosition: c.background_position ?? "center",
+          })}
+          @error=${() => { this._backgroundError = "Background image could not be loaded. Check its URL and access permissions."; }}
+        >` : nothing}
+        ${this._backgroundError ? html`<div class="background-error" role="alert">${this._backgroundError}</div>` : nothing}
         <div class="canvas" style=${styleMap(canvasStyle)}>
           <div class="grid">
             ${visible.length
-              ? visible.map((w) => this._renderWidget(w, portrait, columns))
+              ? visible.map((w) => this._renderWidget(w, portrait, columns, quarters))
               : html`<div class="tile intro">Add some widgets in the card editor to get started.</div>`}
           </div>
         </div>
@@ -253,8 +316,10 @@ export class YadCard extends LitElement {
         -webkit-font-smoothing: antialiased;
       }
       .yad.has-bg {
-        background: var(--h-bg-image) center / cover no-repeat, var(--h-bg);
+        background: var(--h-bg);
       }
+      .background-image { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      .background-error { position: relative; z-index: 1; padding: 8px 16px; color: var(--h-text); background: var(--h-surface); }
       .yad.has-bg .tile:not(.transparent) {
         backdrop-filter: blur(18px) saturate(1.2);
         -webkit-backdrop-filter: blur(18px) saturate(1.2);
@@ -280,10 +345,16 @@ export class YadCard extends LitElement {
         grid-auto-flow: row dense;
         gap: var(--gap);
       }
+      .quarter-rows .grid {
+        row-gap: var(--row-gap);
+        grid-auto-rows: calc((var(--row-height) - 3 * var(--row-gap)) / 4);
+      }
       .fill .grid {
         height: 100%;
         grid-auto-rows: minmax(0, 1fr);
       }
+      .fill.quarter-rows .grid { grid-auto-rows: minmax(0, 1fr); }
+      .tile.w-spacer { padding: 0; }
       .tile {
         position: relative;
         min-width: 0;

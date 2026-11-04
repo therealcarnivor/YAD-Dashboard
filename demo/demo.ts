@@ -89,6 +89,11 @@ add(ent("media_player.kitchen", "playing", { friendly_name: "Kitchen Speaker", m
 add(ent("person.alex", "home", { friendly_name: "Alex Carter" }));
 add(ent("person.sam", "not_home", { friendly_name: "Sam Carter" }));
 add(ent("person.jo", "Work", { friendly_name: "Jo" }));
+add(ent("sensor.car_charge", "72", { friendly_name: "Car battery", unit_of_measurement: "%" }));
+add(ent("sensor.car_range", "218", { friendly_name: "Car range", unit_of_measurement: "km" }));
+add(ent("device_tracker.car", "home", { friendly_name: "Family car" }));
+add(ent("binary_sensor.car_plug", "on", { friendly_name: "Car plugged in" }));
+add(ent("binary_sensor.car_charging", "off", { friendly_name: "Car charging" }));
 
 const at = (dayOffset: number, h: number, m = 0) => {
   const d = new Date();
@@ -173,7 +178,7 @@ card.setConfig({
   widgets: [
     { type: "clock", col_span: 2, row_span: 1, transparent: true, greet_by_name: params.get("greet") !== "0" },
     { type: "weather", entity: "weather.home", col_span: 1, row_span: 2, portrait_col_span: 1 },
-    { type: "calendar", entities: ["calendar.family", { entity: "calendar.bins", color: "#6f9273" }], col_span: 1, row_span: 4, portrait_row_span: 2 },
+    { type: "calendar", entities: ["calendar.family", { entity: "calendar.bins", color: "#6f9273" }], highlight_weekends: params.get("showcase") === "1", col_span: 1, row_span: 4, portrait_row_span: 2 },
     { type: "climate", entity: "climate.living_room", col_span: 1, row_span: 2 },
     {
       type: "energy",
@@ -204,6 +209,10 @@ card.setConfig({
       visibility: "portrait",
     },
     { type: "card", card: { type: "markdown", content: "🧺 <b>Bins out tonight</b> — recycling week." }, col_span: 1, row_span: 1, visibility: "portrait" },
+    ...(params.get("showcase") === "1" ? [
+      { type: "spacer", style: "line", col_span: 4, row_span: 0.25, portrait_col_span: 2 },
+      { type: "car", title: "Family car", charge_entity: "sensor.car_charge", range_entity: "sensor.car_range", location_entity: "device_tracker.car", plugged_in_entity: "binary_sensor.car_plug", charging_entity: "binary_sensor.car_charging", col_span: 2, row_span: 2 },
+    ] : []),
   ],
 });
 update();
