@@ -5,6 +5,13 @@ A warm, modern, **modular widget dashboard** for Home Assistant — built for wa
 One card, in a **panel view**, renders a full-screen grid of widgets that you configure from the visual editor or YAML. It fills the screen (perfect with `?kiosk`), adapts to **portrait or landscape**, and can run as a **display-only** screen with touch disabled.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![GitHub release](https://img.shields.io/github/v/release/therealcarnivor/HA-Dashboard)](https://github.com/therealcarnivor/HA-Dashboard/releases)
+
+![Hearth Dashboard in landscape with the Hearth light palette](https://raw.githubusercontent.com/therealcarnivor/HA-Dashboard/main/docs/images/landscape-light.png)
+
+| Midnight indigo, dark mode | Coastal palette, portrait |
+| --- | --- |
+| ![Landscape dashboard with the Midnight indigo dark palette](https://raw.githubusercontent.com/therealcarnivor/HA-Dashboard/main/docs/images/landscape-dark.png) | ![Portrait dashboard with the Coastal palette](https://raw.githubusercontent.com/therealcarnivor/HA-Dashboard/main/docs/images/portrait-coastal.png) |
 
 ## Widgets
 

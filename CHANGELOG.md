@@ -7,6 +7,10 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- Screenshots and a release badge in the README.
+
 ## [0.2.1] - 2026-11-04
 
 ### Added
