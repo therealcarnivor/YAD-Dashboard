@@ -31,6 +31,10 @@ One card, in a **panel view**, renders a full-screen grid of widgets that you co
 
 HACS registers the resource automatically. If it doesn't, add it manually under **Settings → Dashboards → ⋮ → Resources**: URL `/hacsfiles/HA-Dashboard/hearth-dashboard.js`, type **JavaScript module**.
 
+### Updates and versions
+
+Hearth Dashboard uses [semantic versioning](https://semver.org/) with [GitHub releases](https://github.com/therealcarnivor/HA-Dashboard/releases). HACS tells you when a new version is available and shows its release notes. To install an older version, open the repository in HACS and choose **⋮ → Redownload**, then pick the version. See [CHANGELOG.md](CHANGELOG.md) for the full history. The installed version appears at the bottom of the card editor and in the browser console.
+
 ### Manual
 
 Copy `dist/hearth-dashboard.js` to `<config>/www/hearth-dashboard.js` and add `/local/hearth-dashboard.js` as a **JavaScript module** resource.
@@ -200,7 +204,17 @@ npx http-server .  # then open http://localhost:8080/demo/
 
 The demo page accepts `?dark=1`, `?theme=light|dark|ha`, `?palette=<name>|custom`, `?screen=1080p|4k|…`, `?orientation=portrait|landscape`, `?greet=0` and `?display_only=1`.
 
-`dist/hearth-dashboard.js` is committed so HACS can install straight from the repository; publishing a GitHub release also attaches it as a release asset (see `.github/workflows/release.yml`).
+`dist/hearth-dashboard.js` is committed so HACS can install straight from the repository, and each GitHub release also includes it as a download.
+
+### Releasing a new version
+
+1. As you work, add entries under **Unreleased** in [CHANGELOG.md](CHANGELOG.md).
+2. Cut the release in one of two ways:
+   - **From your PC:** `npm version patch` (bug fixes), `npm version minor` (new features) or `npm version major` (breaking changes). This bumps `package.json`, syncs `src/version.ts`, moves the Unreleased notes under the new version, rebuilds `dist`, commits "Release vX.Y.Z", tags it and pushes.
+   - **From GitHub:** **Actions → Release → Run workflow**, pick the bump type and run it. The workflow does the same steps.
+3. The [Release workflow](.github/workflows/release.yml) builds the card, checks the tag matches `package.json`, and publishes a GitHub release with the changelog notes and `hearth-dashboard.js` attached. HACS then offers it as an update.
+
+Versions with a suffix (for example `npm version prerelease --preid beta` → `1.2.0-beta.0`) are published as pre-releases, which HACS only shows to people who opt in to beta versions.
 
 ## License
 

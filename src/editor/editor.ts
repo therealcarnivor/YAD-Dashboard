@@ -4,6 +4,7 @@ import { PALETTES, type PaletteColors } from "../palettes";
 import { SCREENS } from "../screens";
 import type { DashboardConfig, HomeAssistant, WidgetConfig, WidgetType } from "../types";
 import { fireEvent } from "../utils";
+import { VERSION } from "../version";
 import { LABELS, LAYOUT_SCHEMA, WIDGETS } from "../widgets/registry";
 import "./color-picker";
 
@@ -342,6 +343,10 @@ export class HearthDashboardEditor extends LitElement {
             <button class="text-btn" @click=${() => (this._adding = false)}>Cancel</button>`
           : html`<button class="add" @click=${() => (this._adding = true)}><ha-icon icon="mdi:plus"></ha-icon>Add widget</button>`}
       </div>
+      <div class="footer">
+        Hearth Dashboard v${VERSION} ·
+        <a href="https://github.com/therealcarnivor/HA-Dashboard/releases" target="_blank" rel="noreferrer">Release notes</a>
+      </div>
     `;
   }
 
@@ -517,6 +522,15 @@ export class HearthDashboardEditor extends LitElement {
     .error {
       color: var(--error-color);
       margin-top: 6px;
+    }
+    .footer {
+      margin-top: 8px;
+      text-align: center;
+      font-size: 0.8em;
+      color: var(--secondary-text-color);
+    }
+    .footer a {
+      color: var(--primary-color);
     }
     .palettes {
       display: grid;

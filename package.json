@@ -8,7 +8,9 @@
     "build": "rollup -c",
     "watch": "rollup -c -w",
     "typecheck": "tsc --noEmit",
-    "demo": "rollup -c --environment DEMO"
+    "demo": "rollup -c --environment DEMO",
+    "version": "node scripts/sync-version.mjs && npm run build && git add src/version.ts CHANGELOG.md dist",
+    "postversion": "git push --follow-tags"
   },
   "repository": {
     "type": "git",

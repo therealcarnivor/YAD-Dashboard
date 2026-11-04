@@ -1,24 +1,77 @@
 name: Release
 
+# Two ways to publish a release:
+#  - Locally: `npm version patch|minor|major` (bumps, commits, tags and pushes the tag).
+#  - On GitHub: Actions → Release → Run workflow, then choose the bump type.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
 
 permissions:
   contents: write
+
+concurrency: release
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Only run manual releases from main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run the release workflow from the main branch."
+          exit 1
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      - name: Bump version, commit and tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version ${{ inputs.bump }}
+
+      - name: Read version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check the tag matches package.json
+        if: github.event_name == 'push'
+        run: |
+          if [ "$GITHUB_REF_NAME" != "v${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version ${{ steps.version.outputs.version }}."
+            exit 1
+          fi
+
+      - run: node scripts/sync-version.mjs --check
+      - run: npm run typecheck
       - run: npm run build
-      - name: Attach bundle to release
+      - name: Ensure the committed bundle matches the source
+        run: git diff --exit-code -- dist
+
+      - name: Write release notes
+        run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" > release-notes.md
+
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
           files: dist/hearth-dashboard.js
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          fail_on_unmatched_files: true
