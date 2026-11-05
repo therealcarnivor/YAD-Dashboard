@@ -439,7 +439,7 @@ export class YadEditor extends LitElement {
           .computeLabel=${this._label}
           @value-changed=${(e: CustomEvent) => this._widgetChanged(e, index)}
         ></ha-form>
-        ${w.type !== "spacer" ? html`<p class="hint">Automatic height shrinks only this widget within its assigned grid area. Screen size, scaling and other widgets' positions remain unchanged. Long content scrolls within the smaller of the height limit and the available grid area.</p>` : nothing}
+        ${w.type !== "spacer" ? html`<p class="hint">Automatic height shrinks this widget's grid space to fit its content (in quarter rows, never taller than its row span) so widgets below move up. On fixed or full-screen layouts, widgets without automatic height grow to use the freed space. Content taller than the maximum scrolls.</p>` : nothing}
       </div>
     `;
   }

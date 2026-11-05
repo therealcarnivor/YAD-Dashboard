@@ -117,8 +117,8 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | `portrait_col_span` / `portrait_row_span` | Size override for portrait |
 | `visibility` | `all` (default), `landscape` or `portrait` |
 | `transparent` | Render without the tile background (default for `clock`) |
-| `auto_height` | `false` by default. Shrink this widget to its content within its assigned grid area; other widgets keep their positions. Ignored for spacers |
-| `auto_height_max` | Maximum total tile height in px for automatic sizing (default `600`, minimum `60`), also limited by the assigned grid area; long lists scroll within this limit |
+| `auto_height` | `false` by default. Shrink this widget's grid space to its content, in quarter rows up to its `row_span`; widgets below move up, and on fill/fixed screens widgets without automatic height grow to use the freed space. Ignored for spacers |
+| `auto_height_max` | Maximum total tile height in px for automatic sizing (default `600`, minimum `60`), also limited by `row_span`; long lists scroll within this limit |
 
 Widgets are packed into the grid in order, filling gaps automatically.
 
@@ -157,7 +157,7 @@ widgets:
 
 **weather** — `entity` (required), `forecast_type` (`daily`, `hourly`, `twice_daily`), `forecast_count` (5), `show_details` (true).
 
-**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (5). `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
+**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
 
 **energy** — `power_entity` (current consumption in W or kW), `today_entity`, `solar_power_entity`, `solar_today_entity`, `battery_entity`, `cost_entity`, `show_graph` (true), `hours_to_show` (24). All optional — show only what you have.
 

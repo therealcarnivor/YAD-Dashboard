@@ -1,4 +1,4 @@
-import { css, html, nothing, PropertyValues, svg } from "lit";
+import { css, html, nothing, svg } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { HassEntity, WidgetConfig } from "../types";
@@ -18,8 +18,10 @@ export interface EnergyConfig extends WidgetConfig {
 }
 
 type HistoryResponse = Record<string, Array<{ s: string; lu: number }>>;
+type StatisticsResponse = Record<string, Array<{ start: number; mean?: number | null }>>;
 
 const BUCKETS = 48;
+const REFRESH_MS = 5 * 60_000;
 
 /** Returns [value, unit] scaled to kW when the sensor reports large W values. */
 const powerParts = (hass: any, stateObj?: HassEntity): [string, string] => {
@@ -35,6 +37,8 @@ export class YadEnergy extends YadWidget<EnergyConfig> {
   @state() private _series?: number[];
   private _timer?: number;
   private _fetchedKey?: string;
+  private _inflight = false;
+  private _lastFetch = 0;
 
   protected watchedEntities(): string[] {
     const c = this.config;
@@ -45,47 +49,82 @@ export class YadEnergy extends YadWidget<EnergyConfig> {
 
   connectedCallback(): void {
     super.connectedCallback();
+    // updated() performs the single initial fetch.
     this._fetchedKey = undefined;
-    if (this.hass) void this._fetchHistory();
+    document.addEventListener("visibilitychange", this._onVisibility);
+    this.requestUpdate();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    document.removeEventListener("visibilitychange", this._onVisibility);
     window.clearInterval(this._timer);
     this._timer = undefined;
   }
 
-  protected updated(changed: PropertyValues): void {
+  private _onVisibility = (): void => {
+    if (!document.hidden && Date.now() - this._lastFetch > REFRESH_MS) void this._fetchHistory();
+  };
+
+  protected updated(): void {
     if (this.config.show_graph === false || !this.config.power_entity || !this.hass) return;
     const key = `${this.config.power_entity}|${this.config.hours_to_show}`;
-    if ((changed.has("config") || changed.has("hass")) && key !== this._fetchedKey) {
+    if (key !== this._fetchedKey) {
       this._fetchedKey = key;
-      void this._fetchHistory();
+      void this._fetchHistory(true);
     }
-    if (!this._timer) this._timer = window.setInterval(() => void this._fetchHistory(), 5 * 60_000);
+    if (!this._timer) this._timer = window.setInterval(() => void this._fetchHistory(), REFRESH_MS);
   }
 
-  private async _fetchHistory(): Promise<void> {
+  private async _fetchHistory(force = false): Promise<void> {
     const entity = this.config.power_entity;
-    if (!this.hass || !entity || this.config.show_graph === false) return;
+    if (!this.hass || !entity || this.config.show_graph === false || this._inflight) return;
+    if (!force && document.hidden) return;
+    this._inflight = true;
+    this._lastFetch = Date.now();
     const hours = this.config.hours_to_show ?? 24;
     const end = new Date();
     const start = new Date(end.getTime() - hours * 3_600_000);
     try {
-      const res = await this.hass.callWS<HistoryResponse>({
-        type: "history/history_during_period",
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        entity_ids: [entity],
-        minimal_response: true,
-        no_attributes: true,
-      });
-      const points = (res[entity] ?? [])
-        .map((p) => ({ t: p.lu * 1000, v: Number(p.s) }))
-        .filter((p) => Number.isFinite(p.v));
+      let points = await this._fetchStatistics(entity, start, end);
+      // Sensors without a state_class have no statistics; fall back to raw history.
+      if (!points.length) {
+        const res = await this.hass.callWS<HistoryResponse>({
+          type: "history/history_during_period",
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          entity_ids: [entity],
+          minimal_response: true,
+          no_attributes: true,
+        });
+        points = (res[entity] ?? [])
+          .map((p) => ({ t: p.lu * 1000, v: Number(p.s) }))
+          .filter((p) => Number.isFinite(p.v));
+      }
       this._series = this._bucket(points, start.getTime(), end.getTime());
     } catch {
       this._series = undefined;
+    } finally {
+      this._inflight = false;
+    }
+  }
+
+  /** 5-minute long-term statistics: at most 12 rows per hour regardless of how often the sensor updates. */
+  private async _fetchStatistics(entity: string, start: Date, end: Date): Promise<{ t: number; v: number }[]> {
+    try {
+      const res = await this.hass!.callWS<StatisticsResponse>({
+        type: "recorder/statistics_during_period",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        statistic_ids: [entity],
+        period: "5minute",
+        types: ["mean"],
+      });
+      return (res[entity] ?? [])
+        .filter((p): p is { start: number; mean: number } => typeof p.mean === "number" && Number.isFinite(p.mean))
+        .map((p) => ({ t: p.start, v: p.mean }));
+    } catch {
+      return [];
     }
   }
 

@@ -48,7 +48,13 @@ export class YadCard extends LitElement {
   private _onOrientation = (e: MediaQueryListEvent) => (this._portraitMedia = e.matches);
   private _resizeObserver = new ResizeObserver(() => this._measure());
   private _onWindowResize = () => this._measure();
-  private _heightObserver = new ResizeObserver(() => this._limitAutomaticHeights());
+  /** Fitted grid spans (in quarter rows) for automatic-height widgets, keyed by orientation and widget index. */
+  @state() private _autoSpans: Record<string, number> = {};
+  /** Row track measured at full spans, used when every widget has automatic height. */
+  @state() private _packedTrack?: { key: string; track: number };
+  private _fitFrame?: number;
+  private _fitPasses = 0;
+  private _autoObserver = new ResizeObserver(() => this._scheduleFit());
 
   private _measure(): void {
     const rect = this.getBoundingClientRect();
@@ -101,6 +107,9 @@ export class YadCard extends LitElement {
     // Retire v0.5's dashboard-wide compact setting without breaking saved configurations.
     Reflect.deleteProperty(next, "layout_mode");
     this._config = next;
+    this._autoSpans = {};
+    this._packedTrack = undefined;
+    this._fitPasses = 0;
   }
 
   public getCardSize(): number {
@@ -124,7 +133,9 @@ export class YadCard extends LitElement {
     super.disconnectedCallback();
     this._mql.removeEventListener("change", this._onOrientation);
     this._resizeObserver.disconnect();
-    this._heightObserver.disconnect();
+    this._autoObserver.disconnect();
+    if (this._fitFrame) cancelAnimationFrame(this._fitFrame);
+    this._fitFrame = undefined;
     window.removeEventListener("resize", this._onWindowResize);
     window.clearTimeout(this._backgroundTimer);
     this._backgroundRequest++;
@@ -132,11 +143,14 @@ export class YadCard extends LitElement {
   }
 
   protected updated(): void {
-    this._heightObserver.disconnect();
+    this._autoObserver.disconnect();
     const grid = this.renderRoot.querySelector<HTMLElement>(".grid");
-    if (grid && this.renderRoot.querySelector(".auto-height")) {
-      this._heightObserver.observe(grid);
-      this._limitAutomaticHeights();
+    const autoTiles = this.renderRoot.querySelectorAll<HTMLElement>(".tile.auto-height");
+    if (grid && autoTiles.length) {
+      // Grid size changes alter the row track; widget size changes alter the content height.
+      this._autoObserver.observe(grid);
+      autoTiles.forEach((tile) => tile.firstElementChild && this._autoObserver.observe(tile.firstElementChild));
+      this._scheduleFit();
     }
     const source = this._config?.background_media?.media_content_id || this._config?.background;
     if (source === this._backgroundKey) return;
@@ -145,22 +159,67 @@ export class YadCard extends LitElement {
     void this._resolveBackground(source);
   }
 
-  private _limitAutomaticHeights(): void {
+  private _scheduleFit(): void {
+    if (this._fitFrame) return;
+    this._fitFrame = requestAnimationFrame(() => {
+      this._fitFrame = undefined;
+      this._fitAutomaticHeights();
+    });
+  }
+
+  /**
+   * Shrinks each automatic-height widget's grid area to its content (in quarter rows, up to its row_span)
+   * so widgets below move up. On fill/fixed screens the 1fr rows then stretch, growing the other widgets.
+   */
+  private _fitAutomaticHeights(): void {
     const grid = this.renderRoot.querySelector<HTMLElement>(".grid");
     if (!grid || !this.isConnected) return;
     const gridStyle = getComputedStyle(grid);
-    const track = parseFloat(gridStyle.gridTemplateRows);
+    let track = parseFloat(gridStyle.gridTemplateRows);
     const gap = parseFloat(gridStyle.rowGap) || 0;
-    if (!Number.isFinite(track)) return;
+    if (!Number.isFinite(track) || track <= 0) return;
+    if (this.renderRoot.querySelector(".packed")) {
+      const key = `${this._portrait}|${grid.clientWidth}x${grid.clientHeight}`;
+      if (this._packedTrack?.key !== key) {
+        // Measure the track with every widget at its full span; fitted spans would distort it.
+        const prefix = this._portrait ? "p" : "l";
+        const hasSpans = Object.keys(this._autoSpans).some((k) => k.startsWith(prefix));
+        if (hasSpans || this._packedTrack) {
+          this._autoSpans = Object.fromEntries(Object.entries(this._autoSpans).filter(([k]) => !k.startsWith(prefix)));
+          this._packedTrack = undefined;
+          return;
+        }
+        this._packedTrack = { key, track };
+      }
+      track = this._packedTrack.track;
+    }
+    const spans = { ...this._autoSpans };
+    let changed = false;
     this.renderRoot.querySelectorAll<HTMLElement>(".tile.auto-height").forEach((tile) => {
-      const rows = Number(tile.style.gridRow.match(/span (\d+)/)?.[1] ?? 1);
+      const widget = tile.firstElementChild as HTMLElement | null;
+      const key = tile.dataset.autoKey;
+      const maxRows = Number(tile.dataset.maxRows);
+      if (!widget || !key || !(maxRows > 0)) return;
       const style = getComputedStyle(tile);
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
         + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
-      const max = parseFloat(style.getPropertyValue("--auto-max")) || 600;
-      const contentHeight = Math.max(0, Math.min(max, rows * track + (rows - 1) * gap) - padding);
-      tile.style.setProperty("--auto-content-max", `${contentHeight}px`);
+      const cap = parseFloat(style.getPropertyValue("--auto-max")) || 600;
+      const maxArea = maxRows * track + (maxRows - 1) * gap;
+      tile.style.setProperty("--auto-content-max", `${Math.max(16, Math.min(cap, maxArea) - padding)}px`);
+      const needed = widget.offsetHeight + padding;
+      const rows = Math.min(maxRows, Math.max(1, Math.ceil((needed + gap - 0.5) / (track + gap))));
+      if (spans[key] !== rows) {
+        spans[key] = rows;
+        changed = true;
+      }
     });
+    if (!changed) {
+      this._fitPasses = 0;
+      return;
+    }
+    // Fill layouts feed back (fewer rows -> taller tracks); this normally settles in 2-3 passes.
+    if (++this._fitPasses > 12) return;
+    this._autoSpans = spans;
   }
 
   private async _resolveBackground(source?: string): Promise<void> {
@@ -216,7 +275,7 @@ export class YadCard extends LitElement {
     return t;
   }
 
-  private _renderWidget(w: WidgetConfig, portrait: boolean, columns: number, quarters: boolean) {
+  private _renderWidget(w: WidgetConfig, index: number, portrait: boolean, columns: number, quarters: boolean) {
     const def = WIDGETS[w.type];
     const displayOnly = !!this._config!.display_only;
     const merged = { ...def?.defaults, ...w };
@@ -224,9 +283,11 @@ export class YadCard extends LitElement {
     const requestedRows = (portrait ? merged.portrait_row_span : undefined) ?? merged.row_span ?? 1;
     const rowSpan = w.type === "spacer" ? requestedRows : Math.max(1, Math.round(requestedRows));
     const autoHeight = !!merged.auto_height && w.type !== "spacer";
+    const gridRows = Math.round(rowSpan * (quarters ? 4 : 1));
+    const autoKey = `${portrait ? "p" : "l"}${index}`;
     const style = {
       gridColumn: `span ${colSpan}`,
-      gridRow: `span ${Math.round(rowSpan * (quarters ? 4 : 1))}`,
+      gridRow: `span ${(autoHeight ? this._autoSpans[autoKey] : undefined) ?? gridRows}`,
       ...(autoHeight ? {
         "--auto-max": `${merged.auto_height_max ?? 600}px`,
       } : {}),
@@ -236,7 +297,8 @@ export class YadCard extends LitElement {
       return html`<div class="tile error" style=${styleMap(style)}>Unknown widget type “${w.type}”</div>`;
     }
     const tag = unsafeStatic(def.tag);
-    return html`<div class=${classMap({ tile: true, "auto-height": autoHeight, transparent: !!merged.transparent, [`w-${w.type}`]: true })} style=${styleMap(style)}>
+    return html`<div class=${classMap({ tile: true, "auto-height": autoHeight, transparent: !!merged.transparent, [`w-${w.type}`]: true })} style=${styleMap(style)}
+      data-auto-key=${autoHeight ? autoKey : nothing} data-max-rows=${autoHeight ? gridRows : nothing}>
       ${staticHtml`<${tag} .hass=${this.hass} .config=${merged} .displayOnly=${displayOnly} .autoHeight=${autoHeight}></${tag}>`}
     </div>`;
   }
@@ -266,7 +328,10 @@ export class YadCard extends LitElement {
       const v = w.visibility ?? "all";
       return v === "all" || (v === "portrait") === portrait;
     });
-    const quarters = visible.some((w) => w.type === "spacer");
+    const quarters = visible.some((w) => w.type === "spacer" || (w.auto_height && WIDGETS[w.type]));
+    // With nothing to grow into freed space, keep rows at their original size so widgets pack to the top.
+    const packed = fill && visible.some((w) => w.auto_height && w.type !== "spacer")
+      && !visible.some((w) => !w.auto_height && w.type !== "spacer");
     const rowGap = quarters ? Math.min(c.gap, Math.max(0, (c.row_height - 4) / 3)) : c.gap;
 
     const themeClass = this._themeClass;
@@ -275,6 +340,7 @@ export class YadCard extends LitElement {
       "--gap": `${c.gap}px`,
       "--row-height": `${c.row_height}px`,
       "--row-gap": `${rowGap}px`,
+      ...(packed && this._packedTrack ? { "--packed-track": `${this._packedTrack.track}px` } : {}),
       ...(themeClass === "ha" ? {} : paletteVars(resolvePalette(c.palette, themeClass === "dark", c.custom_palette), themeClass === "dark")),
     };
     if (c.accent_color) {
@@ -314,6 +380,7 @@ export class YadCard extends LitElement {
           "hide-cursor": c.hide_cursor,
           "has-bg": !!this._backgroundUrl,
           "quarter-rows": quarters,
+          packed,
         })}
         style=${styleMap(vars)}
       >
@@ -330,7 +397,7 @@ export class YadCard extends LitElement {
         <div class="canvas" style=${styleMap(canvasStyle)}>
           <div class="grid">
             ${visible.length
-              ? visible.map((w) => this._renderWidget(w, portrait, columns, quarters))
+              ? visible.map((w) => this._renderWidget(w, c.widgets.indexOf(w), portrait, columns, quarters))
               : html`<div class="tile intro">Add some widgets in the card editor to get started.</div>`}
           </div>
         </div>
@@ -393,6 +460,7 @@ export class YadCard extends LitElement {
         grid-auto-rows: minmax(0, 1fr);
       }
       .fill.quarter-rows .grid { grid-auto-rows: minmax(0, 1fr); }
+      .fill.packed .grid { grid-auto-rows: var(--packed-track, minmax(0, 1fr)); align-content: start; }
       .tile.auto-height {
         align-self: start;
         max-height: 100%;

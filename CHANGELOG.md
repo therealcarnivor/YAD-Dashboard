@@ -7,6 +7,15 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Changed
+
+- Automatic height now condenses the layout: each widget's grid space shrinks to its content in quarter-row steps (up to its `row_span`), widgets below move up, and on fill/fixed screens the widgets without automatic height grow to use the freed space. If every widget uses automatic height, the layout packs to the top instead. Previously only the visible tile shrank, leaving its grid space empty.
+
+### Fixed
+
+- Calendar widget no longer overloads Home Assistant: calendars are fetched one at a time, overlapping refreshes are skipped, the duplicate fetch on load is removed, `refresh_minutes` now defaults to 10 (was 5) and is clamped to at least 1, and refreshes pause while the screen is hidden. Results are cached in browser storage, so page reloads (e.g. kiosk refreshes) and other tabs within the refresh interval reuse them, a fetch already in progress elsewhere is not duplicated, and failures back off for 2 minutes. Slow remote (e.g. iCloud CalDAV) calendars previously exhausted HA's worker threads and could make it unresponsive.
+- Energy graph now uses Home Assistant's 5-minute long-term statistics instead of raw state history (falling back to history for sensors without a `state_class`), greatly reducing database load for fast-updating power sensors. It also skips overlapping and hidden-screen refreshes.
+
 ## [0.5.1] - 2026-11-04
 
 ### Changed

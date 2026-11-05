@@ -209,6 +209,30 @@ try {
     await settle(calendar);
     check(calendar.shadowRoot.querySelector(".bar ha-icon")?.getAttribute("icon") === "mdi:school" && calendar.shadowRoot.querySelector(".bar").title === "School", "Calendar custom icon/name are missing");
     calendar.remove();
+    localStorage.clear();
+    let apiCalls = 0;
+    let release;
+    const cooldownHass = { ...hass, callApi: async () => { apiCalls++; await new Promise((resolve) => { release = resolve; }); return [event("Cached outing", monday)]; } };
+    const mount = async () => {
+      const element = document.createElement("yad-widget-calendar");
+      element.hass = cooldownHass;
+      element.config = { type: "calendar", entities: ["calendar.family"], days: 14 };
+      document.body.append(element);
+      await settle(element);
+      return element;
+    };
+    const first = await mount();
+    const concurrent = await mount();
+    check(apiCalls === 1, "A second page/tab must not fetch while another fetch is pending");
+    release();
+    await settle(first);
+    check(first.shadowRoot.textContent.includes("Cached outing"), "Fetched calendar events did not render");
+    first.remove();
+    concurrent.remove();
+    const reloaded = await mount();
+    check(apiCalls === 1 && reloaded.shadowRoot.textContent.includes("Cached outing"), "A reload within the refresh interval must reuse cached events");
+    reloaded.remove();
+    localStorage.clear();
 
     const editor = document.createElement("yad-card-editor");
     editor.hass = hass;
@@ -288,14 +312,13 @@ try {
     check(!card.shadowRoot.querySelector(".compact"), "Removed compact mode must not be rendered for legacy configurations");
     check(rect(tiles()[0]).height < 180, "Short vehicle widget did not shrink to content");
     check(Math.abs(rect(tiles()[1]).height - 376) < 1, "Manual widget row-based height changed");
-    check(Math.abs(rect(tiles()[2]).top - rect(tiles()[0]).top - 196) < 1, "Automatic sizing must preserve grid placement");
+    check(rect(tiles()[2]).top < rect(tiles()[1]).bottom - 100, "Widgets below an automatic-height widget must move up");
+    check(rect(tiles()[2]).top - rect(tiles()[0]).bottom < 16 + 33 + 16 + 1, "Automatic-height grid space must fit its content to the nearest quarter row");
     check(rect(tiles()[3]).height <= 241, "Automatic-height cap was exceeded");
     const sensorList = tiles()[3].querySelector("yad-widget-sensors").shadowRoot.querySelector(".scroll");
     check(sensorList.scrollHeight > sensorList.clientHeight + 100, "Long sensor lists must scroll inside the capped widget");
-    const originalTop = rect(tiles()[2]).top;
     card.hass = { ...hass, states: { ...hass.states, "sensor.charge": state("sensor.charge", "unavailable") } };
     await settle(card);
-    check(Math.abs(rect(tiles()[2]).top - originalTop) < 1, "Entity-driven resizing must not move other widgets");
     assertNoOverlap();
     card.setConfig({ ...config, orientation: "portrait" });
     await settle(card);
@@ -314,8 +337,23 @@ try {
       await settle(card);
       check(card.shadowRoot.querySelector(".fixed") && card.shadowRoot.querySelector(".fill"), "Automatic height must preserve screen presets and scaling");
       assertNoOverlap();
-      check(tiles()[0].style.gridRow === "span 1" && tiles()[3].style.gridRow === "span 3", "Screen sizing must retain configured row spans");
+      const span = (tile) => Number(tile.style.gridRow.match(/span (\d+)/)[1]);
+      check(span(tiles()[0]) < 4 && span(tiles()[1]) === 8 && span(tiles()[3]) <= 12, "Automatic widgets must fit within their row span while manual spans are kept");
+      check(rect(tiles()[2]).top < rect(tiles()[1]).bottom, "Widgets below must move up on fixed screens");
     }
+    const growth = { ...config, screen: "1080p", height: "screen", columns: 1 };
+    const car = { type: "car", charge_entity: "sensor.charge", col_span: 1, row_span: 2 };
+    card.setConfig({ ...growth, widgets: [{ ...car, auto_height: false }, { type: "clock", col_span: 1, row_span: 2 }] });
+    await settle(card);
+    const manualOnlyHeight = rect(tiles()[1]).height;
+    card.setConfig({ ...growth, widgets: [{ ...car, auto_height: true }, { type: "clock", col_span: 1, row_span: 2 }] });
+    await settle(card);
+    check(rect(tiles()[1]).height > manualOnlyHeight + 50, "Widgets without automatic height must grow into freed space on fixed screens");
+    card.setConfig({ ...growth, widgets: [{ ...car, auto_height: true }, { ...car, auto_height: true }, { ...car, auto_height: true }] });
+    await settle(card);
+    check(card.shadowRoot.querySelector(".packed"), "All-automatic fixed layouts must pack rows");
+    check(rect(tiles()[1]).top - rect(tiles()[0]).bottom < 80 && rect(tiles()[2]).top - rect(tiles()[1]).bottom < 80, "All-automatic widgets must pack to the top instead of spreading out");
+    assertNoOverlap();
     card.hass = hass;
     const intrinsicWidgets = [
       { type: "clock" },
@@ -357,7 +395,8 @@ try {
     const spacerTop = rect(tiles()[1]).top;
     embedded.style.height = "170px";
     await settle(card);
-    check(Math.abs(rect(tiles()[0]).height - embeddedHeight - 100) < 1 && Math.abs(rect(tiles()[1]).top - spacerTop) < 1, "Embedded content should grow without rearranging the grid");
+    check(Math.abs(rect(tiles()[0]).height - embeddedHeight - 100) < 1, "Embedded content should grow its automatic-height tile");
+    check(rect(tiles()[1]).top - spacerTop > 100 - 1 - 49, "Widgets below should move down when automatic-height content grows");
     assertNoOverlap();
     delete window.loadCardHelpers;
     const editor = document.createElement("yad-card-editor");

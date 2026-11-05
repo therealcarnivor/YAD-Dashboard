@@ -1,4 +1,4 @@
-import { css, html, nothing, PropertyValues } from "lit";
+import { css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { widgetStyles } from "../styles";
 import type { EntityRef, WidgetConfig } from "../types";
@@ -37,12 +37,68 @@ interface CalEvent {
 
 const PALETTE = ["var(--h-accent)", "var(--h-sage)", "var(--h-sky)", "var(--h-amber)", "#b07aa1", "#c9a27e"];
 
+const CACHE_PREFIX = "yad-calendar:";
+/** A fetch started by another tab or an earlier page load is trusted to finish within this window. */
+const PENDING_MS = 3 * 60_000;
+const FAILURE_BACKOFF_MS = 2 * 60_000;
+/** Lets a refresh timer that fires just before the cache expires still fetch. */
+const FRESHNESS_SLACK_MS = 30_000;
+
+type StoredEvent = Omit<CalEvent, "start" | "end"> & { start: string; end: string };
+
+interface CalendarCache {
+  day: string;
+  fetchedAt?: number;
+  pendingSince?: number;
+  failedAt?: number;
+  events?: StoredEvent[];
+}
+
+/**
+ * Calendar results shared through localStorage so page reloads, kiosk refreshes and other
+ * tabs reuse recent events instead of hitting Home Assistant (and remote CalDAV servers) again.
+ */
+const readCache = (key: string): CalendarCache | undefined => {
+  try {
+    const raw = window.localStorage.getItem(CACHE_PREFIX + key);
+    return raw ? (JSON.parse(raw) as CalendarCache) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const writeCache = (key: string, value: CalendarCache): void => {
+  try {
+    window.localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(value));
+  } catch {
+    // Storage full or unavailable: fall back to in-memory behaviour.
+  }
+};
+
+const toStored = (events: CalEvent[]): StoredEvent[] =>
+  events.map((e) => ({ ...e, start: e.start.toISOString(), end: e.end.toISOString() }));
+
+const fromStored = (events: StoredEvent[]): CalEvent[] =>
+  events.map((e) => ({ ...e, start: new Date(e.start), end: new Date(e.end) }));
+
 @customElement("yad-widget-calendar")
 export class YadCalendar extends YadWidget<CalendarConfig> {
   @state() private _events?: CalEvent[];
   @state() private _error?: string;
   private _timer?: number;
+  private _timerMinutes?: number;
   private _fetchedKey?: string;
+  private _inflight = false;
+  private _lastFetch = 0;
+  private _retryTimer?: number;
+
+  private _scheduleRetry(): void {
+    if (this._retryTimer) return;
+    this._retryTimer = window.setTimeout(() => {
+      this._retryTimer = undefined;
+      void this._fetch(true);
+    }, 15_000);
+  }
 
   protected watchedEntities(): string[] {
     return normaliseEntities(this.config.entities).map((e) => e.entity);
@@ -50,60 +106,110 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
 
   connectedCallback(): void {
     super.connectedCallback();
+    // updated() performs the single initial fetch.
     this._fetchedKey = undefined;
-    if (this.hass) void this._fetch();
+    document.addEventListener("visibilitychange", this._onVisibility);
+    this.requestUpdate();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    document.removeEventListener("visibilitychange", this._onVisibility);
     window.clearInterval(this._timer);
     this._timer = undefined;
+    window.clearTimeout(this._retryTimer);
+    this._retryTimer = undefined;
   }
 
-  protected updated(changed: PropertyValues): void {
-    const key = JSON.stringify([this.config.entities, this.config.days]);
-    if ((changed.has("config") || changed.has("hass")) && this.hass && key !== this._fetchedKey) {
-      this._fetchedKey = key;
-      void this._fetch();
-    }
-    if (!this._timer && this.hass) {
-      this._timer = window.setInterval(() => void this._fetch(), (this.config.refresh_minutes ?? 5) * 60_000);
-    }
+  private _onVisibility = (): void => {
+    if (!document.hidden && Date.now() - this._lastFetch > this._refreshMinutes() * 60_000) void this._fetch();
+  };
+
+  private _refreshMinutes(): number {
+    return Math.max(1, Number(this.config.refresh_minutes) || 10);
   }
 
-  private async _fetch(): Promise<void> {
+  protected updated(): void {
     if (!this.hass) return;
+    const key = JSON.stringify([this.config.entities, this.config.days]);
+    if (key !== this._fetchedKey) {
+      this._fetchedKey = key;
+      void this._fetch(true);
+    }
+    const minutes = this._refreshMinutes();
+    if (!this._timer || minutes !== this._timerMinutes) {
+      window.clearInterval(this._timer);
+      this._timerMinutes = minutes;
+      this._timer = window.setInterval(() => void this._fetch(), minutes * 60_000);
+    }
+  }
+
+  private _applyEvents(events: CalEvent[]): void {
+    const now = Date.now();
+    this._events = events
+      .filter((e) => e.end.getTime() > now)
+      .sort((a, b) => a.start.getTime() - b.start.getTime() || Number(b.allDay) - Number(a.allDay));
+  }
+
+  private async _fetch(force = false): Promise<void> {
+    if (!this.hass || this._inflight) return;
+    if (!force && document.hidden) return;
     const cals = normaliseEntities(this.config.entities);
     const start = startOfDay(new Date());
     const end = addDays(start, this.config.days ?? 7);
+    const day = start.toISOString();
+    const cacheKey = JSON.stringify([cals, this.config.days ?? 7]);
+    const now = Date.now();
+    const cached = readCache(cacheKey);
+    const sameDay = cached?.day === day;
+    if (sameDay && cached.events) this._applyEvents(fromStored(cached.events));
+    if (sameDay) {
+      const fresh = cached.fetchedAt !== undefined && now - cached.fetchedAt < this._refreshMinutes() * 60_000 - FRESHNESS_SLACK_MS;
+      const pending = cached.pendingSince !== undefined && now - cached.pendingSince < PENDING_MS;
+      const backingOff = cached.failedAt !== undefined && now - cached.failedAt < FAILURE_BACKOFF_MS;
+      if (fresh || pending || backingOff) {
+        this._lastFetch = cached.fetchedAt ?? now;
+        if (cached.events) this._error = undefined;
+        // Pick up another tab's (or an interrupted page load's) results once they land.
+        if (pending && !fresh) this._scheduleRetry();
+        return;
+      }
+    }
+    this._inflight = true;
+    this._lastFetch = now;
+    writeCache(cacheKey, { ...(sameDay ? cached : {}), day, pendingSince: now });
     const params = `start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`;
     try {
-      const results = await Promise.all(
-        cals.map(async (cal, i) => {
-          const raw = await this.hass!.callApi<RawEvent[]>("GET", `calendars/${cal.entity}?${params}`);
-          return raw.map<CalEvent>((ev) => {
-            const allDay = !ev.start.dateTime;
-            return {
-              summary: ev.summary,
-              start: parseDate(ev.start.dateTime ?? ev.start.date!),
-              end: parseDate(ev.end.dateTime ?? ev.end.date!),
-              allDay,
-              location: ev.location,
-              color: cal.color ?? PALETTE[i % PALETTE.length],
-              calendarName: entityName(this.hass?.states[cal.entity], cal.name, cal.entity),
-              calendarIcon: cal.icon,
-            };
-          });
-        }),
-      );
-      const now = Date.now();
-      this._events = results
-        .flat()
-        .filter((e) => e.end.getTime() > now)
-        .sort((a, b) => a.start.getTime() - b.start.getTime() || Number(b.allDay) - Number(a.allDay));
+      // Sequential on purpose: remote (e.g. CalDAV) calendars each tie up an HA worker thread.
+      const results: CalEvent[][] = [];
+      for (const [i, cal] of cals.entries()) {
+        if (!this.hass || !this.isConnected) {
+          writeCache(cacheKey, { ...(sameDay ? cached : {}), day, pendingSince: undefined });
+          return;
+        }
+        const raw = await this.hass.callApi<RawEvent[]>("GET", `calendars/${cal.entity}?${params}`);
+        results.push(
+          raw.map<CalEvent>((ev) => ({
+            summary: ev.summary,
+            start: parseDate(ev.start.dateTime ?? ev.start.date!),
+            end: parseDate(ev.end.dateTime ?? ev.end.date!),
+            allDay: !ev.start.dateTime,
+            location: ev.location,
+            color: cal.color ?? PALETTE[i % PALETTE.length],
+            calendarName: entityName(this.hass?.states[cal.entity], cal.name, cal.entity),
+            calendarIcon: cal.icon,
+          })),
+        );
+      }
+      const events = results.flat();
+      writeCache(cacheKey, { day, fetchedAt: Date.now(), events: toStored(events) });
+      this._applyEvents(events);
       this._error = undefined;
     } catch (err) {
+      writeCache(cacheKey, { ...(sameDay ? cached : {}), day, pendingSince: undefined, failedAt: Date.now() });
       this._error = (err as Error)?.message ?? "Could not load calendar";
+    } finally {
+      this._inflight = false;
     }
   }
 
