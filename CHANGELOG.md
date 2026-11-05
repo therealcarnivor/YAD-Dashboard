@@ -7,6 +7,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-05
+
 ### Changed
 
 - Automatic height now condenses the layout: each widget's grid space shrinks to its content in quarter-row steps (up to its `row_span`), widgets below move up, and on fill/fixed screens the widgets without automatic height grow to use the freed space. If every widget uses automatic height, the layout packs to the top instead. Previously only the visible tile shrank, leaving its grid space empty.
@@ -100,7 +102,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 - Light, dark and Home Assistant theme modes with an accent colour override.
 - Visual editor for adding, ordering and configuring widgets.
 
-[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.3.1...v0.4.0
