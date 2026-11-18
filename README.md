@@ -101,7 +101,8 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | `columns` | `4` | Grid columns in landscape |
 | `portrait_columns` | `2` | Grid columns in portrait |
 | `height` | `screen` | When `screen: fill`: `screen` fills the viewport with rows sized to fit; `auto` uses fixed `row_height` rows; or any CSS height |
-| `row_height` | `180` | Row height in px when `height: auto` |
+| `row_height` | `180` | Row height in px when `height: auto`, or when `fill_from_top` is on |
+| `fill_from_top` | `false` | On fill and fixed-screen layouts, keep rows at `row_height` and stack cards from the top instead of stretching them to the screen height. The screen's aspect ratio and scaling are unchanged |
 | `gap` | `16` | Spacing between tiles in px |
 | `display_only` | `false` | Disable all touch/clicks and hide controls — a pure information display |
 | `hide_cursor` | `false` | Hide the mouse cursor (useful for kiosk PCs) |
@@ -224,6 +225,8 @@ portrait_columns: 2
 widgets:
   - type: clock
     col_span: 2
+    entities: [person.alex, person.sam]
+    clock_position: left
   - type: weather
     entity: weather.home
     row_span: 2
@@ -255,8 +258,11 @@ widgets:
       - switch.coffee_machine
       - entity: scene.movie_night
         icon: mdi:movie-open
-  - type: people
-    entities: [person.alex, person.sam]
+  - type: menu
+    items:
+      - { name: Home, path: /yad-home/0, icon: mdi:home }
+      - { name: Kitchen, path: /yad-kitchen/0, icon: mdi:silverware }
+    font_size: 18
   - type: sensors
     title: Around the house
     col_span: 2
