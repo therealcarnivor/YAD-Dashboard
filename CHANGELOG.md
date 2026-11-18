@@ -7,6 +7,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-18
+
 ### Added
 
 - Menu widget: buttons that jump to other YAD dashboards (name, path and optional icon each), with the current dashboard subtly accented, vertical or horizontal layout, adjustable text size, and `?kiosk` kept when navigating.
@@ -113,7 +115,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 - Light, dark and Home Assistant theme modes with an accent colour override.
 - Visual editor for adding, ordering and configuring widgets.
 
-[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.4.0...v0.5.0
