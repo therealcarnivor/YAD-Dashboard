@@ -9,7 +9,14 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ### Added
 
+- Menu widget: buttons that jump to other YAD dashboards (name, path and optional icon each), with the current dashboard subtly accented, vertical or horizontal layout, adjustable text size, and `?kiosk` kept when navigating.
+- Clock widget can show people beside the time and greeting, with a `clock_position` option for which side each sits on. Avatars resize to fit however many people are shown, and `show_clock: false` shows only the people.
+- `fill_from_top` option: on fill and fixed-screen layouts, rows keep their `row_height` and cards stack from the top instead of stretching to the screen height.
 - Calendar day headings can be placed above, left or right of each day's events, and event times can be placed at the right of the row while locations remain under event names.
+
+### Changed
+
+- The people widget is now part of the clock widget. Existing `people` widgets are converted automatically.
 
 ## [0.5.2] - 2026-11-05
 
