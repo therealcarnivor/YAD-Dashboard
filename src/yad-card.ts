@@ -7,7 +7,7 @@ import { paletteVars, resolvePalette } from "./palettes";
 import { autoScale, SCREENS } from "./screens";
 import { themeStyles } from "./styles";
 import type { DashboardConfig, HomeAssistant, WidgetConfig } from "./types";
-import { WIDGETS } from "./widgets/registry";
+import { migrateWidgets, WIDGETS } from "./widgets/registry";
 import "./editor/editor";
 
 import { VERSION } from "./version";
@@ -24,8 +24,9 @@ const DEFAULTS = {
   columns: 4,
   portrait_columns: 2,
   height: "screen",
-  row_height: 180,
-  gap: 16,
+  row_height: 90,
+  fill_from_top: false,
+  gap: 8,
   display_only: false,
   hide_cursor: false,
 } as const;
@@ -74,6 +75,8 @@ export class YadCard extends LitElement {
     const ids = Object.keys(hass?.states ?? {});
     const of = (domain: string, n: number) => ids.filter((id) => id.startsWith(`${domain}.`)).slice(0, n);
     const widgets: WidgetConfig[] = [{ type: "clock", col_span: 2, row_span: 1, transparent: true }];
+    const people = of("person", 4);
+    if (people.length) widgets[0].entities = people;
     const weather = of("weather", 1)[0];
     if (weather) widgets.push({ type: "weather", entity: weather, col_span: 2, row_span: 2 });
     const calendars = of("calendar", 3);
@@ -82,8 +85,6 @@ export class YadCard extends LitElement {
     if (climate) widgets.push({ type: "climate", entity: climate, col_span: 1, row_span: 2 });
     const lights = of("light", 6);
     if (lights.length) widgets.push({ type: "toggles", entities: lights, col_span: 2, row_span: 1 });
-    const people = of("person", 4);
-    if (people.length) widgets.push({ type: "people", entities: people, col_span: 1, row_span: 1 });
     return { theme: "auto", columns: 4, portrait_columns: 2, widgets };
   }
 
@@ -103,7 +104,7 @@ export class YadCard extends LitElement {
         }
       }
     }
-    const next = { ...config, widgets: config.widgets ?? [] };
+    const next = { ...config, widgets: migrateWidgets(config.widgets ?? []) };
     // Retire v0.5's dashboard-wide compact setting without breaking saved configurations.
     Reflect.deleteProperty(next, "layout_mode");
     this._config = next;
@@ -381,6 +382,7 @@ export class YadCard extends LitElement {
           "has-bg": !!this._backgroundUrl,
           "quarter-rows": quarters,
           packed,
+          "from-top": fill && !!c.fill_from_top,
         })}
         style=${styleMap(vars)}
       >
@@ -461,6 +463,14 @@ export class YadCard extends LitElement {
       }
       .fill.quarter-rows .grid { grid-auto-rows: minmax(0, 1fr); }
       .fill.packed .grid { grid-auto-rows: var(--packed-track, minmax(0, 1fr)); align-content: start; }
+      .fill.from-top .grid {
+        height: auto;
+        align-content: start;
+        grid-auto-rows: var(--row-height);
+      }
+      .fill.from-top.quarter-rows .grid {
+        grid-auto-rows: calc((var(--row-height) - 3 * var(--row-gap)) / 4);
+      }
       .tile.auto-height {
         align-self: start;
         max-height: 100%;

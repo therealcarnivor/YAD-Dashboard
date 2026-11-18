@@ -1,0 +1,136 @@
+import { css, html, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import { widgetStyles } from "../styles";
+import type { WidgetConfig } from "../types";
+import { YadWidget } from "./base";
+
+export interface MenuItem {
+  name: string;
+  /** Dashboard path, for example /yad-kitchen/0. */
+  path: string;
+  icon?: string;
+}
+
+export interface MenuConfig extends WidgetConfig {
+  type: "menu";
+  items?: MenuItem[];
+  direction?: "vertical" | "horizontal";
+  show_icons?: boolean;
+  /** Button text size in px; icons scale with it. */
+  font_size?: number;
+}
+
+const trim = (p: string): string => p.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
+
+@customElement("yad-widget-menu")
+export class YadMenu extends YadWidget<MenuConfig> {
+  @state() private _path = window.location.pathname;
+  private readonly _sync = (): void => {
+    this._path = window.location.pathname;
+  };
+
+  protected watchedEntities(): string[] {
+    return [];
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("location-changed", this._sync);
+    window.addEventListener("popstate", this._sync);
+    this._sync();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("location-changed", this._sync);
+    window.removeEventListener("popstate", this._sync);
+  }
+
+  private _active(item: MenuItem): boolean {
+    const target = trim(item.path);
+    const here = trim(this._path);
+    return here === target || here.startsWith(`${target}/`);
+  }
+
+  private _go(item: MenuItem): void {
+    if (this.displayOnly || !item.path || this._active(item)) return;
+    // Keep query flags such as ?kiosk when moving between dashboards.
+    const url = /[?#]/.test(item.path) ? item.path : `${item.path}${window.location.search}`;
+    window.history.pushState(null, "", url);
+    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+  }
+
+  protected render() {
+    const items = (this.config.items ?? []).filter((i) => i?.name && i.path);
+    const icons = this.config.show_icons !== false;
+    if (!items.length) {
+      return html`<div class="empty"><ha-icon icon="mdi:menu"></ha-icon>Add menu buttons</div>`;
+    }
+    const size = Number(this.config.font_size);
+    const fontStyle = size > 0 ? `font-size:${size}px` : "";
+    return html`
+      ${this.config.title ? html`<div class="head"><ha-icon icon="mdi:menu"></ha-icon>${this.config.title}</div>` : nothing}
+      <nav class="menu ${this.config.direction === "horizontal" ? "horizontal" : ""}" style=${fontStyle}>
+        ${items.map((item) => {
+          const active = this._active(item);
+          return html`<button class="item ${active ? "active" : ""}" aria-current=${active ? "page" : "false"} @click=${() => this._go(item)}>
+            ${icons && item.icon ? html`<ha-icon icon=${item.icon}></ha-icon>` : nothing}
+            <span class="label">${item.name}</span>
+          </button>`;
+        })}
+      </nav>
+    `;
+  }
+
+  static styles = [
+    widgetStyles,
+    css`
+      .menu {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .menu.horizontal { flex-direction: row; }
+      .item {
+        all: unset;
+        box-sizing: border-box;
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 8px 14px;
+        border-radius: var(--h-radius-sm);
+        background: var(--h-surface-2);
+        color: var(--h-text);
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .item:active { transform: scale(0.97); }
+      .item:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 2px; }
+      .item ha-icon {
+        --mdc-icon-size: 1.4em;
+        flex: none;
+        color: var(--h-muted);
+      }
+      .label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .item.active {
+        background: var(--h-accent-soft);
+        color: var(--h-accent);
+        cursor: default;
+      }
+      .item.active ha-icon { color: var(--h-accent); }
+      :host([auto-height]) .item { flex: none; }
+    `,
+  ];
+}

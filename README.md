@@ -17,7 +17,7 @@ One card, in a **panel view**, renders a full-screen grid of widgets that you co
 
 | Type | What it shows |
 | --- | --- |
-| `clock` | Time, date and a friendly greeting ("Good morning, Alex") |
+| `clock` | Time, date, a friendly greeting ("Good morning, Alex") and optionally who is home, side by side |
 | `weather` | Current conditions, high/low, humidity & wind, daily/hourly forecast |
 | `calendar` | Agenda with calendar initials/icons, weekend highlighting and optional weekend filtering |
 | `energy` | Live power, 24h usage graph, energy today, solar, battery and cost |
@@ -25,7 +25,7 @@ One card, in a **panel view**, renders a full-screen grid of widgets that you co
 | `toggles` | Lights & switches (also fans, scenes, scripts, covers, locks, buttons) |
 | `sensors` | Any sensors as tiles or a list |
 | `media` | Now playing with artwork and transport controls |
-| `people` | Who's home, with avatars and presence |
+| `menu` | Buttons that jump to other YAD dashboards, with the current one subtly highlighted |
 | `car` | Vehicle charge/fuel, range, location, EV connection/charging and optional extra sensors |
 | `spacer` | Quarter-row blank space, horizontal line or dashed divider |
 | `card` | **Any existing Home Assistant card** (built-in or custom) embedded as a widget |
@@ -153,11 +153,11 @@ widgets:
 
 ### Widget options
 
-**clock** — `greeting` (true), `greet_by_name` (true; set `false` for just "Good morning"), `name` (defaults to the HA user's first name), `show_date` (true), `show_seconds` (false), `time_format` (`auto`, `12`, `24`).
+**clock** — `greeting` (true), `greet_by_name` (true; set `false` for just "Good morning"), `name` (defaults to the HA user's first name), `show_date` (true), `show_seconds` (false), `time_format` (`auto`, `12`, `24`), `entities` (person entities shown beside the clock; avatars resize to fit however many there are), `show_state` (true), `clock_position` (`left` or `right`; people take the other side), `show_clock` (false for people only). The old `people` widget is converted automatically.
 
 **weather** — `entity` (required), `forecast_type` (`daily`, `hourly`, `twice_daily`), `forecast_count` (5), `show_details` (true).
 
-**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
+**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Set `day_position` to `top` (default), `left`, or `right` to position the day/date heading relative to its events. Set `time_position` to `below` (default) or `right` to move event times to the right of each row; locations remain under the event name when enabled. Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
 
 **energy** — `power_entity` (current consumption in W or kW), `today_entity`, `solar_power_entity`, `solar_today_entity`, `battery_entity`, `cost_entity`, `show_graph` (true), `hours_to_show` (24). All optional — show only what you have.
 
@@ -169,7 +169,7 @@ widgets:
 
 **media** — `entity` (required), `name`, `show_volume` (false).
 
-**people** — `entities` (person entities), `show_state` (true).
+**menu** — `items` (list of `name`, `path` such as `/yad-kitchen/0`, optional `icon`), `direction` (`vertical` or `horizontal`), `show_icons` (true), `font_size` (text size in px, default 16; icons scale with it), `title`. The button matching the current dashboard is highlighted; query flags like `?kiosk` are kept when navigating.
 
 **card** — `card`: any Lovelace card configuration.
 

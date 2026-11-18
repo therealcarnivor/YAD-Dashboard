@@ -75,8 +75,8 @@ export class YadCar extends YadWidget<CarConfig> {
   static styles = [
     widgetStyles,
     css`
-      .items { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 10px; }
-      .item { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: var(--h-radius-sm); background: var(--h-surface-2); cursor: pointer; }
+      .items { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 8px; }
+      .item { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: var(--h-radius-sm); background: var(--h-surface-2); cursor: pointer; }
       .item ha-icon { color: var(--h-accent); flex: none; }
       .body { min-width: 0; flex: 1; }
       .label { font-size: 0.8rem; font-weight: 600; }

@@ -7,7 +7,7 @@ import "./climate";
 import "./toggles";
 import "./sensors";
 import "./media";
-import "./people";
+import "./menu";
 import "./card";
 import "./car";
 import "./spacer";
@@ -47,15 +47,20 @@ const select = (name: string, options: [string, string][]) => ({
 
 export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   clock: {
-    label: "Clock & greeting",
+    label: "Clock, greeting & people",
     icon: "mdi:clock-outline",
     tag: "yad-widget-clock",
-    defaults: { col_span: 2, row_span: 1, transparent: true, greeting: true, greet_by_name: true },
+    defaults: { col_span: 2, row_span: 1, transparent: true, greeting: true, greet_by_name: true, clock_position: "left" },
     schema: [
       {
         type: "grid",
         name: "",
         schema: [
+          bool("show_clock"),
+          select("clock_position", [
+            ["left", "Clock left, people right"],
+            ["right", "Clock right, people left"],
+          ]),
           bool("greeting"),
           bool("greet_by_name"),
           text("name"),
@@ -68,6 +73,9 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
           ]),
         ],
       },
+      text("title"),
+      entities("entities", "person"),
+      bool("show_state"),
     ],
   },
   weather: {
@@ -96,14 +104,19 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     label: "Calendar agenda",
     icon: "mdi:calendar-month-outline",
     tag: "yad-widget-calendar",
-    defaults: { col_span: 1, row_span: 3, days: 7, max_events: 8, show_weekends: true, highlight_weekends: false, show_calendar_badge: true },
+    defaults: { col_span: 1, row_span: 3, days: 7, max_events: 8, show_weekends: true, highlight_weekends: false, show_calendar_badge: true, day_position: "top", time_position: "below" },
     schema: [
       text("title"),
       entities("entities", "calendar"),
       {
         type: "grid",
         name: "",
-        schema: [number("days", 1, 31), number("max_events", 1, 50), bool("show_location"), bool("show_weekends"), bool("highlight_weekends"), bool("show_calendar_badge"), number("refresh_minutes", 1, 120)],
+        schema: [
+          number("days", 1, 31), number("max_events", 1, 50), bool("show_location"), bool("show_weekends"),
+          bool("highlight_weekends"), bool("show_calendar_badge"), number("refresh_minutes", 1, 120),
+          select("day_position", [["top", "Above events"], ["left", "Left of events"], ["right", "Right of events"]]),
+          select("time_position", [["below", "Below event name"], ["right", "Right of event"]]),
+        ],
       },
     ],
   },
@@ -173,12 +186,29 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     defaults: { col_span: 2, row_span: 1 },
     schema: [entity("entity", "media_player", true), { type: "grid", name: "", schema: [text("name"), bool("show_volume")] }],
   },
-  people: {
-    label: "People & presence",
-    icon: "mdi:account-group-outline",
-    tag: "yad-widget-people",
-    defaults: { col_span: 1, row_span: 1 },
-    schema: [text("title"), entities("entities", "person"), bool("show_state")],
+  menu: {
+    label: "Menu / navigation",
+    icon: "mdi:menu",
+    tag: "yad-widget-menu",
+    defaults: { col_span: 1, row_span: 1, direction: "vertical", items: [] },
+    schema: [
+      text("title"),
+      {
+        name: "items",
+        selector: {
+          object: {
+            multiple: true,
+            label_field: "name",
+            fields: {
+              name: { label: "Name", required: true, selector: { text: {} } },
+              path: { label: "Dashboard path (e.g. /yad-kitchen/0)", required: true, selector: { text: {} } },
+              icon: { label: "Icon", selector: { icon: {} } },
+            },
+          },
+        },
+      },
+      { type: "grid", name: "", schema: [select("direction", [["vertical", "Vertical list"], ["horizontal", "Horizontal row"]]), bool("show_icons"), number("font_size", 10, 64)] },
+    ],
   },
   card: {
     label: "Any Home Assistant card",
@@ -211,6 +241,10 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     schema: [select("style", [["blank", "Blank spacer"], ["line", "Horizontal line"], ["dashed", "Dashed line"]]), { name: "line_color", selector: { text: {} } }],
   },
 };
+
+/** Rewrites widget types retired by newer versions so saved configurations keep working. */
+export const migrateWidgets = (widgets: WidgetConfig[]): WidgetConfig[] =>
+  widgets.map((w) => ((w.type as string) === "people" ? ({ ...w, type: "clock", show_clock: false } as WidgetConfig) : w));
 
 /** Grid placement fields shared by every widget in the visual editor. */
 export const LAYOUT_SCHEMA = [
@@ -261,6 +295,8 @@ export const LABELS: Record<string, string> = {
   show_weekends: "Show weekend events",
   highlight_weekends: "Highlight weekends",
   show_calendar_badge: "Show calendar initial / icon",
+  day_position: "Day / date position",
+  time_position: "Event time position",
   charge_entity: "Charge level (%)",
   fuel_entity: "Fuel level (%)",
   range_entity: "Remaining range",
@@ -283,6 +319,12 @@ export const LABELS: Record<string, string> = {
   layout: "Layout",
   show_volume: "Show volume slider",
   show_state: "Show home/away",
+  show_clock: "Show clock & greeting",
+  clock_position: "Layout",
+  direction: "Direction",
+  show_icons: "Show icons",
+  font_size: "Text size (px)",
+  items: "Menu buttons",
   col_span: "Width (columns)",
   row_span: "Height (rows)",
   portrait_col_span: "Portrait width",

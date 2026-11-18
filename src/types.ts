@@ -35,7 +35,7 @@ export type WidgetType =
   | "toggles"
   | "sensors"
   | "media"
-  | "people"
+  | "menu"
   | "car"
   | "spacer"
   | "card";
@@ -84,6 +84,8 @@ export interface DashboardConfig {
   /** "screen" fills the viewport (ideal with ?kiosk), "auto" grows with content, or any CSS height. */
   height?: string;
   row_height?: number;
+  /** In fill/fixed-screen layouts, keep rows at row_height and stack cards from the top instead of stretching them to the screen height. */
+  fill_from_top?: boolean;
   gap?: number;
   display_only?: boolean;
   hide_cursor?: boolean;

@@ -49,7 +49,7 @@ export const widgetStyles = css`
     font-weight: 700;
     letter-spacing: 0.01em;
     color: var(--h-muted);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     flex: none;
     white-space: nowrap;
     overflow: hidden;
@@ -74,7 +74,7 @@ export const widgetStyles = css`
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     color: var(--h-muted);
     text-align: center;
     font-size: 0.95rem;

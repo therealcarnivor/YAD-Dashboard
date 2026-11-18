@@ -41,7 +41,7 @@ try {
       user: { name: "Test User" },
       config: { unit_system: { temperature: "C" } },
     };
-    const widgets = ["clock", "weather", "calendar", "energy", "climate", "toggles", "sensors", "media", "people", "card", "car", "spacer"];
+    const widgets = ["clock", "weather", "calendar", "energy", "climate", "toggles", "sensors", "media", "menu", "card", "car", "spacer"];
     for (const type of widgets) {
       if (!customElements.get(`yad-widget-${type}`)) throw new Error(`Missing widget: ${type}`);
     }
@@ -199,6 +199,9 @@ try {
       previousTint = style.backgroundColor;
     }
     check(calendar.shadowRoot.querySelector(".bar.badge").textContent.trim() === "F" && calendar.shadowRoot.querySelector(".bar").title === "Family", "Calendar initial and accessible name are missing");
+    calendar.config = { ...calendar.config, day_position: "right", time_position: "right" };
+    await settle(calendar);
+    check(calendar.shadowRoot.querySelector(".day-right .day-label.weekend ha-icon") && calendar.shadowRoot.querySelector(".event.weekend .event-time"), "Weekend highlighting must remain visible in side layouts");
     calendar.config = { ...calendar.config, show_weekends: false, max_events: 1 };
     await settle(calendar);
     check(calendar.shadowRoot.querySelectorAll(".event").length === 1 && calendar.shadowRoot.textContent.includes("Weekday school") && !calendar.shadowRoot.textContent.includes("Weekend outing"), "Weekend filter must run before the max-events limit");
@@ -210,6 +213,57 @@ try {
     check(calendar.shadowRoot.querySelector(".bar ha-icon")?.getAttribute("icon") === "mdi:school" && calendar.shadowRoot.querySelector(".bar").title === "School", "Calendar custom icon/name are missing");
     calendar.remove();
     localStorage.clear();
+
+    const layoutCalendar = document.createElement("yad-widget-calendar");
+    const mondayDate = [monday.getFullYear(), String(monday.getMonth() + 1).padStart(2, "0"), String(monday.getDate()).padStart(2, "0")].join("-");
+    const nextDay = new Date(monday); nextDay.setDate(monday.getDate() + 1);
+    const nextDate = [nextDay.getFullYear(), String(nextDay.getMonth() + 1).padStart(2, "0"), String(nextDay.getDate()).padStart(2, "0")].join("-");
+    let layoutCalls = 0;
+    layoutCalendar.hass = { ...hass, callApi: async () => {
+      layoutCalls++;
+      return [
+        { summary: "All day event", start: { date: mondayDate }, end: { date: nextDate }, location: "Library" },
+        { ...event("Timed meeting", monday), location: "Meeting room" },
+        event("No location", new Date(monday.getTime() + 60 * 60000)),
+      ];
+    } };
+    layoutCalendar.config = { type: "calendar", entities: ["calendar.family"], days: 14, show_location: true };
+    layoutCalendar.style.width = "480px";
+    document.body.append(layoutCalendar);
+    await settle(layoutCalendar);
+    const root = layoutCalendar.shadowRoot;
+    check(root.querySelectorAll(".day").length === 1 && root.querySelectorAll(".day .event").length === 3, "Events on the same day must share one day heading");
+    check(root.querySelector(".list.day-top") && !root.querySelector(".event-time") && root.querySelector(".meta").textContent.includes("All day") && root.querySelector(".meta").textContent.includes("Library"), "Default calendar layout must keep time and location below the event");
+    for (const dayPosition of ["left", "right", "top"]) {
+      for (const timePosition of ["right", "below"]) {
+        layoutCalendar.config = { ...layoutCalendar.config, day_position: dayPosition, time_position: timePosition };
+        await settle(layoutCalendar);
+        const day = root.querySelector(".day");
+        const label = day.querySelector(".day-label").getBoundingClientRect();
+        const events = day.querySelector(".day-events").getBoundingClientRect();
+        check(dayPosition === "top" ? label.bottom <= events.top : dayPosition === "left" ? label.right <= events.left : label.left >= events.right, `Day heading is not positioned ${dayPosition}`);
+        const rows = [...day.querySelectorAll(".event")];
+        if (timePosition === "right") {
+          check(rows[0].querySelector(".event-time").textContent.trim() === "All day" && rows[0].querySelector(".body .meta").textContent.trim() === "Library", "All-day time or location is missing from right-hand layout");
+          check(rows[1].querySelector(".event-time").textContent.includes("12:00") && rows[1].querySelector(".body .meta").textContent.trim() === "Meeting room", "Timed event or location is missing from right-hand layout");
+          check(!rows[2].querySelector(".body .meta") && rows[2].querySelector(".event-time"), "Missing locations must not leave an empty location row");
+          check(rows[1].querySelector(".event-time").getBoundingClientRect().left >= rows[1].querySelector(".body").getBoundingClientRect().right, "Time must appear to the right of the event body");
+        } else {
+          check(!day.querySelector(".event-time") && rows[1].querySelector(".meta").textContent.includes("12:00") && rows[1].querySelector(".meta").textContent.includes("Meeting room"), "Below layout must retain time and location together");
+        }
+      }
+    }
+    layoutCalendar.config = { ...layoutCalendar.config, time_position: "right", show_location: false };
+    await settle(layoutCalendar);
+    check(!root.querySelector(".body .meta") && root.querySelectorAll(".event-time").length === 3 && layoutCalls === 1, "Layout changes should hide locations without refetching events");
+    layoutCalendar.style.width = "280px";
+    layoutCalendar.config = { ...layoutCalendar.config, day_position: "left", show_location: true };
+    await settle(layoutCalendar);
+    const narrowDay = root.querySelector(".day");
+    check(narrowDay.scrollWidth <= narrowDay.clientWidth && [...narrowDay.querySelectorAll(".event")].every((row) => row.scrollWidth <= row.clientWidth), "Side layouts must fit a narrow calendar without horizontal overflow");
+    layoutCalendar.remove();
+    localStorage.clear();
+
     let apiCalls = 0;
     let release;
     const cooldownHass = { ...hass, callApi: async () => { apiCalls++; await new Promise((resolve) => { release = resolve; }); return [event("Cached outing", monday)]; } };
@@ -253,7 +307,22 @@ try {
     await settle(editor);
     check(config.background === "/new.png" && !config.background_media && config.widgets.length === 1, "URL entry must clear media selection and preserve widgets");
     editor.remove();
-    return ["background controls and failures", "quarter-row geometry", "vehicle data and actions", "calendar weekends and badges", "editor media/upload and collapsed palettes"];
+    const calendarEditor = document.createElement("yad-card-editor");
+    calendarEditor.hass = hass;
+    calendarEditor.setConfig({ type: "custom:yad-card", widgets: [{ type: "calendar", entities: ["calendar.family"] }] });
+    document.body.append(calendarEditor);
+    await settle(calendarEditor);
+    calendarEditor.shadowRoot.querySelector('button[title="Edit"]').click();
+    await settle(calendarEditor);
+    const calendarForm = [...calendarEditor.shadowRoot.querySelectorAll("ha-form")].find((form) => form.schema.some((field) => field.schema?.some((child) => child.name === "day_position")));
+    const layoutFields = calendarForm.schema.flatMap((field) => field.schema ?? []);
+    check(layoutFields.find((field) => field.name === "day_position").selector.select.options.map((option) => option.value).join(",") === "top,left,right" && layoutFields.find((field) => field.name === "time_position").selector.select.options.map((option) => option.value).join(",") === "below,right", "Calendar layout selectors are missing from the editor");
+    let calendarConfig;
+    calendarEditor.addEventListener("config-changed", (event) => { calendarConfig = event.detail.config; });
+    calendarForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...calendarForm.data, day_position: "left", time_position: "right" } } }));
+    check(calendarConfig.widgets[0].day_position === "left" && calendarConfig.widgets[0].time_position === "right", "Calendar layout choices must persist in widget configuration");
+    calendarEditor.remove();
+    return ["background controls and failures", "quarter-row geometry", "vehicle data and actions", "calendar weekends, badges and layouts", "editor media/upload and collapsed palettes"];
   });
   console.log(`PASS features: ${features.join("; ")}`);
   await page.setViewportSize({ width: 1000, height: 800 });

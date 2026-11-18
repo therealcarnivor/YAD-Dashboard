@@ -176,7 +176,7 @@ card.setConfig({
   columns: 4,
   portrait_columns: 2,
   widgets: [
-    { type: "clock", col_span: 2, row_span: 1, transparent: true, greet_by_name: params.get("greet") !== "0" },
+    { type: "clock", col_span: 2, row_span: 1, transparent: true, entities: ["person.alex", "person.sam", "person.jo"], greet_by_name: params.get("greet") !== "0" },
     { type: "weather", entity: "weather.home", col_span: 1, row_span: 2, portrait_col_span: 1 },
     { type: "calendar", entities: ["calendar.family", { entity: "calendar.bins", color: "#6f9273" }], highlight_weekends: params.get("showcase") === "1", col_span: 1, row_span: 4, portrait_row_span: 2 },
     { type: "climate", entity: "climate.living_room", col_span: 1, row_span: 2 },
@@ -199,7 +199,7 @@ card.setConfig({
       portrait_col_span: 2,
     },
     
-    { type: "people", entities: ["person.alex", "person.sam", "person.jo"], col_span: 1, row_span: 1 },
+    { type: "menu", items: [{ name: "Home", path: "/yad-home/0", icon: "mdi:home" }, { name: "Kitchen", path: "/yad-kitchen/0", icon: "mdi:silverware" }], col_span: 1, row_span: 1 },
     {
       type: "sensors",
       title: "Around the house",

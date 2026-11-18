@@ -7,6 +7,10 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- Calendar day headings can be placed above, left or right of each day's events, and event times can be placed at the right of the row while locations remain under event names.
+
 ## [0.5.2] - 2026-11-05
 
 ### Changed

@@ -5,7 +5,7 @@ import { SCREENS } from "../screens";
 import type { DashboardConfig, HomeAssistant, WidgetConfig, WidgetType } from "../types";
 import { fireEvent } from "../utils";
 import { VERSION } from "../version";
-import { LABELS, LAYOUT_SCHEMA, spacerLayoutSchema, WIDGETS } from "../widgets/registry";
+import { LABELS, LAYOUT_SCHEMA, migrateWidgets, spacerLayoutSchema, WIDGETS } from "../widgets/registry";
 import "./color-picker";
 
 const select = (name: string, options: [string, string][], custom = false) => ({
@@ -39,6 +39,8 @@ const generalSchema = (config: DashboardConfig) => {
         ...(screen === "fill"
           ? [select("height", [["screen", "Fill the screen"], ["auto", "Fixed row height (scrolls)"]], true), number("row_height", 60, 600, "px", 10)]
           : []),
+        { name: "fill_from_top", selector: { boolean: {} } },
+        ...(screen !== "fill" ? [number("row_height", 60, 600, "px", 10)] : []),
         number("gap", 0, 48, "px"),
       ],
     },
@@ -90,6 +92,7 @@ const GENERAL_LABELS: Record<string, string> = {
   portrait_columns: "Columns (portrait)",
   height: "Height",
   row_height: "Row height (when not filling screen)",
+  fill_from_top: "Stack cards from the top (don't stretch rows)",
   gap: "Spacing",
   background: "Background image URL (optional)",
   background_media: "Choose from HA media or upload an image",
@@ -124,7 +127,7 @@ export class YadEditor extends LitElement {
   @state() private _yamlError?: string;
 
   public setConfig(config: DashboardConfig): void {
-    this._config = { ...config, widgets: config.widgets ?? [] };
+    this._config = { ...config, widgets: migrateWidgets(config.widgets ?? []) };
     Reflect.deleteProperty(this._config, "layout_mode");
     if (this._selected !== undefined && this._selected >= this._config.widgets.length) this._selected = undefined;
   }
