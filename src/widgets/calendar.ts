@@ -43,10 +43,21 @@ const CACHE_PREFIX = "yad-calendar:";
 /** A fetch started by another tab or an earlier page load is trusted to finish within this window. */
 const PENDING_MS = 3 * 60_000;
 const FAILURE_BACKOFF_MS = 2 * 60_000;
+const REQUEST_TIMEOUT_MS = 15_000;
 /** Lets a refresh timer that fires just before the cache expires still fetch. */
 const FRESHNESS_SLACK_MS = 30_000;
 
 type StoredEvent = Omit<CalEvent, "start" | "end"> & { start: string; end: string };
+
+interface PendingRequest {
+  promise: Promise<RawEvent[]>;
+  timedOut: boolean;
+  params: string;
+}
+
+// callApi cannot be cancelled. Do not start another request for a timed-out calendar
+// in this page until the original request settles.
+const pendingRequests = new Map<string, PendingRequest>();
 
 interface CalendarCache {
   day: string;
@@ -54,6 +65,9 @@ interface CalendarCache {
   pendingSince?: number;
   failedAt?: number;
   events?: StoredEvent[];
+  calendars?: (StoredEvent[] | null)[];
+  calendarFetchedAt?: (number | null)[];
+  errors?: string[];
 }
 
 /**
@@ -87,6 +101,7 @@ const fromStored = (events: StoredEvent[]): CalEvent[] =>
 export class YadCalendar extends YadWidget<CalendarConfig> {
   @state() private _events?: CalEvent[];
   @state() private _error?: string;
+  @state() private _warnings: string[] = [];
   private _timer?: number;
   private _timerMinutes?: number;
   private _fetchedKey?: string;
@@ -94,12 +109,12 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
   private _lastFetch = 0;
   private _retryTimer?: number;
 
-  private _scheduleRetry(): void {
+  private _scheduleRetry(delay = 15_000): void {
     if (this._retryTimer) return;
     this._retryTimer = window.setTimeout(() => {
       this._retryTimer = undefined;
-      void this._fetch(true);
-    }, 15_000);
+      void this._fetch();
+    }, delay);
   }
 
   protected watchedEntities(): string[] {
@@ -136,6 +151,9 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     const key = JSON.stringify([this.config.entities, this.config.days]);
     if (key !== this._fetchedKey) {
       this._fetchedKey = key;
+      this._events = undefined;
+      this._error = undefined;
+      this._warnings = [];
       void this._fetch(true);
     }
     const minutes = this._refreshMinutes();
@@ -153,10 +171,42 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
       .sort((a, b) => a.start.getTime() - b.start.getTime() || Number(b.allDay) - Number(a.allDay));
   }
 
+  private async _fetchCalendar(entity: string, params: string): Promise<RawEvent[]> {
+    let request = pendingRequests.get(entity);
+    if (request?.timedOut) throw new Error("previous request is still pending");
+    if (request && request.params !== params) throw new Error("another request is still pending");
+    if (!request) {
+      const promise = this.hass!.callApi<RawEvent[]>("GET", `calendars/${entity}?${params}`);
+      request = { promise, timedOut: false, params };
+      pendingRequests.set(entity, request);
+      const current = request;
+      void promise.then(
+        () => { if (pendingRequests.get(entity) === current) pendingRequests.delete(entity); },
+        () => { if (pendingRequests.get(entity) === current) pendingRequests.delete(entity); },
+      );
+    }
+    const current = request;
+    let timer: number | undefined;
+    try {
+      return await Promise.race([
+        current.promise,
+        new Promise<never>((_, reject) => {
+          timer = window.setTimeout(() => {
+            current.timedOut = true;
+            reject(new Error("request timed out"));
+          }, REQUEST_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
   private async _fetch(force = false): Promise<void> {
     if (!this.hass || this._inflight) return;
     if (!force && document.hidden) return;
     const cals = normaliseEntities(this.config.entities);
+    const configKey = JSON.stringify([this.config.entities, this.config.days]);
     const start = startOfDay(new Date());
     const end = addDays(start, this.config.days ?? 7);
     const day = start.toISOString();
@@ -164,16 +214,23 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     const now = Date.now();
     const cached = readCache(cacheKey);
     const sameDay = cached?.day === day;
-    if (sameDay && cached.events) this._applyEvents(fromStored(cached.events));
+    if (sameDay && cached.events) {
+      this._applyEvents(fromStored(cached.events));
+      this._warnings = cached.errors ?? [];
+      this._error = undefined;
+    } else if (sameDay && cached.errors?.length) {
+      this._events = undefined;
+      this._error = `Could not load calendars: ${cached.errors.join("; ")}`;
+    }
     if (sameDay) {
       const fresh = cached.fetchedAt !== undefined && now - cached.fetchedAt < this._refreshMinutes() * 60_000 - FRESHNESS_SLACK_MS;
       const pending = cached.pendingSince !== undefined && now - cached.pendingSince < PENDING_MS;
       const backingOff = cached.failedAt !== undefined && now - cached.failedAt < FAILURE_BACKOFF_MS;
       if (fresh || pending || backingOff) {
         this._lastFetch = cached.fetchedAt ?? now;
-        if (cached.events) this._error = undefined;
         // Pick up another tab's (or an interrupted page load's) results once they land.
         if (pending && !fresh) this._scheduleRetry();
+        else if (backingOff) this._scheduleRetry(Math.max(1, FAILURE_BACKOFF_MS - (now - cached.failedAt!)));
         return;
       }
     }
@@ -183,15 +240,19 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     const params = `start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`;
     try {
       // Sequential on purpose: remote (e.g. CalDAV) calendars each tie up an HA worker thread.
-      const results: CalEvent[][] = [];
+      const results: (StoredEvent[] | null)[] = cals.map((_, i) => sameDay ? cached.calendars?.[i] ?? null : null);
+      const fetchedAt: (number | null)[] = cals.map((_, i) => sameDay ? cached.calendarFetchedAt?.[i] ?? null : null);
+      const errors: string[] = [];
       for (const [i, cal] of cals.entries()) {
-        if (!this.hass || !this.isConnected) {
+        if (!this.hass || !this.isConnected || this._fetchedKey !== configKey) {
           writeCache(cacheKey, { ...(sameDay ? cached : {}), day, pendingSince: undefined });
           return;
         }
-        const raw = await this.hass.callApi<RawEvent[]>("GET", `calendars/${cal.entity}?${params}`);
-        results.push(
-          raw.map<CalEvent>((ev) => ({
+        if (cached?.errors?.length && fetchedAt[i] !== null &&
+            now - fetchedAt[i]! < this._refreshMinutes() * 60_000 - FRESHNESS_SLACK_MS) continue;
+        try {
+          const raw = await this._fetchCalendar(cal.entity, params);
+          const events = raw.map<CalEvent>((ev) => ({
             summary: ev.summary,
             start: parseDate(ev.start.dateTime ?? ev.start.date!),
             end: parseDate(ev.end.dateTime ?? ev.end.date!),
@@ -200,18 +261,45 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
             color: cal.color ?? PALETTE[i % PALETTE.length],
             calendarName: entityName(this.hass?.states[cal.entity], cal.name, cal.entity),
             calendarIcon: cal.icon,
-          })),
-        );
+          }));
+          results[i] = toStored(events);
+          fetchedAt[i] = Date.now();
+        } catch (err) {
+          const message = err && typeof err === "object" && "message" in err ? String(err.message) : String(err);
+          errors.push(`${cal.entity}: ${message}`);
+          // A stale successful result may be displayed, but must be retried.
+          fetchedAt[i] = null;
+        }
+        if (!this.isConnected || this._fetchedKey !== configKey) {
+          writeCache(cacheKey, { ...(sameDay ? cached : {}), day, pendingSince: undefined });
+          return;
+        }
+        if (results.some((events) => events !== null)) {
+          const events = results.flatMap((events) => events ?? []);
+          this._applyEvents(fromStored(events));
+          this._warnings = [...errors];
+          this._error = undefined;
+          writeCache(cacheKey, { day, pendingSince: now, events, calendars: results, calendarFetchedAt: fetchedAt, errors });
+        }
       }
-      const events = results.flat();
-      writeCache(cacheKey, { day, fetchedAt: Date.now(), events: toStored(events) });
-      this._applyEvents(events);
-      this._error = undefined;
-    } catch (err) {
-      writeCache(cacheKey, { ...(sameDay ? cached : {}), day, pendingSince: undefined, failedAt: Date.now() });
-      this._error = (err as Error)?.message ?? "Could not load calendar";
+      const hasEvents = results.some((events) => events !== null) || cals.length === 0;
+      const events = results.flatMap((items) => items ?? []);
+      writeCache(cacheKey, {
+        day, events: hasEvents ? events : undefined, calendars: results, calendarFetchedAt: fetchedAt, errors,
+        ...(errors.length ? { failedAt: Date.now() } : { fetchedAt: Date.now() }),
+      });
+      if (hasEvents) {
+        this._applyEvents(fromStored(events));
+        this._warnings = errors;
+        this._error = undefined;
+      } else {
+        this._events = undefined;
+        this._error = `Could not load calendars: ${errors.join("; ")}`;
+      }
+      if (errors.length) this._scheduleRetry(FAILURE_BACKOFF_MS);
     } finally {
       this._inflight = false;
+      if (this.isConnected && this._fetchedKey !== configKey) void this._fetch(true);
     }
   }
 
@@ -237,9 +325,10 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
 
     const today = startOfDay(new Date());
     const events = this._events.filter((e) => this._displayDay(e, today)).slice(0, this.config.max_events ?? 8);
-    if (!events.length) {
-      return html`${header}<div class="empty"><ha-icon icon="mdi:sofa-outline"></ha-icon>Nothing planned — enjoy the downtime</div>`;
-    }
+    const warning = this._warnings.length
+      ? html`<div class="calendar-warning" role="alert">Some calendars could not load: ${this._warnings.join("; ")}</div>`
+      : nothing;
+    if (!events.length) return html`${header}${warning}<div class="empty"><ha-icon icon="mdi:sofa-outline"></ha-icon>Nothing planned — enjoy the downtime</div>`;
 
     const groups = new Map<number, CalEvent[]>();
     for (const e of events) {
@@ -249,7 +338,7 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     }
 
     return html`
-      ${header}
+      ${header}${warning}
       <div class="list scroll ${this.config.day_position === "left" || this.config.day_position === "right" ? `day-${this.config.day_position}` : "day-top"}">
         ${[...groups.entries()].map(([day, evs]) => {
           const weekend = !!this.config.highlight_weekends && [0, 6].includes(new Date(day).getDay());
@@ -284,6 +373,11 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
   static styles = [
     widgetStyles,
     css`
+      .calendar-warning {
+        color: var(--h-muted);
+        font-size: 0.8rem;
+        overflow-wrap: anywhere;
+      }
       .list {
         flex: 1;
         display: flex;

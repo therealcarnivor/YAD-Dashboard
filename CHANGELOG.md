@@ -7,6 +7,20 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- Optional internal pages with separate widget lists and one shared, visually configured menu, including page links and browser history.
+- Pages & menu settings can be collapsed, with individual page settings opening one at a time.
+- Menu buttons can have individual background pictures selected or uploaded through the Home Assistant media picker.
+
+### Changed
+
+- The visual editor now allows up to 16 landscape columns, 32 portrait columns and 32 rows per non-spacer widget.
+
+### Fixed
+
+- Calendar widget shows available and cached events when another calendar fails or times out, with a warning and automatic retry instead of blocking the entire agenda.
+
 ## [0.6.0] - 2026-11-18
 
 ### Added

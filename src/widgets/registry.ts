@@ -1,4 +1,5 @@
 import type { WidgetConfig, WidgetType } from "../types";
+import { IMAGE_MEDIA_SELECTOR } from "../image-media";
 import "./clock";
 import "./weather";
 import "./calendar";
@@ -203,6 +204,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
               name: { label: "Name", required: true, selector: { text: {} } },
               path: { label: "Dashboard path (e.g. /yad-kitchen/0)", required: true, selector: { text: {} } },
               icon: { label: "Icon", selector: { icon: {} } },
+              background_media: { label: "Background image", selector: IMAGE_MEDIA_SELECTOR },
             },
           },
         },
@@ -253,9 +255,9 @@ export const LAYOUT_SCHEMA = [
     name: "",
     schema: [
       number("col_span", 1, 12),
-      number("row_span", 1, 12),
+      number("row_span", 1, 32),
       number("portrait_col_span", 1, 12),
-      number("portrait_row_span", 1, 12),
+      number("portrait_row_span", 1, 32),
       select("visibility", [
         ["all", "Always"],
         ["landscape", "Landscape only"],

@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { chromium } from "playwright";
 
 const manifest = JSON.parse(await readFile(new URL("../hacs.json", import.meta.url), "utf8"));
-const bundle = await readFile(new URL(`../dist/${manifest.filename}`, import.meta.url));
+const bundle = await readFile(process.env.YAD_TEST_BUNDLE ?? new URL(`../dist/${manifest.filename}`, import.meta.url));
 const server = createServer((request, response) => {
   if (request.url === "/") {
     response.writeHead(200, { "Content-Type": "text/html" });
@@ -288,6 +288,152 @@ try {
     reloaded.remove();
     localStorage.clear();
 
+    const realSetTimeout = window.setTimeout;
+    window.setTimeout = (callback, delay, ...args) => realSetTimeout(callback, delay === 15000 ? 20 : delay, ...args);
+    try {
+      let stalled = false;
+      let releaseStalled;
+      let slowCalls = 0;
+      let goodCalls = 0;
+      const partial = document.createElement("yad-widget-calendar");
+      partial.config = { type: "calendar", entities: ["calendar.slow", "calendar.good"], days: 14 };
+      partial.hass = { ...hass, callApi: async (_method, path) => {
+        if (path.startsWith("calendars/calendar.slow?")) {
+          slowCalls++;
+          if (stalled) return new Promise((resolve) => { releaseStalled = resolve; });
+          return [event("Slow calendar event", monday)];
+        }
+        goodCalls++;
+        return [event("Good calendar event", monday)];
+      } };
+      document.body.append(partial);
+      await settle(partial);
+      check(partial.shadowRoot.textContent.includes("Slow calendar event"), "Initial calendar data did not load");
+      const cacheKey = Object.keys(localStorage).find((key) => key.startsWith("yad-calendar:"));
+      const expire = () => {
+        const cached = JSON.parse(localStorage.getItem(cacheKey));
+        cached.fetchedAt = 0;
+        cached.failedAt = 0;
+        localStorage.setItem(cacheKey, JSON.stringify(cached));
+      };
+      stalled = true;
+      expire();
+      await partial._fetch();
+      await settle(partial);
+      check(partial.shadowRoot.textContent.includes("Good calendar event") && partial.shadowRoot.textContent.includes("Slow calendar event"), "A timed-out calendar must not hide working or cached events");
+      check(partial.shadowRoot.querySelector('[role="alert"]')?.textContent.includes("calendar.slow: request timed out"), "A calendar timeout must be visible");
+      expire();
+      await partial._fetch();
+      check(slowCalls === 2 && goodCalls === 2, "Retrying a failure must not duplicate a pending request or refetch a fresh calendar");
+      releaseStalled([event("Late response", monday)]);
+      await settle(partial);
+      stalled = false;
+      expire();
+      await partial._fetch();
+      await settle(partial);
+      check(slowCalls === 3 && !partial.shadowRoot.querySelector('[role="alert"]'), "A settled calendar must recover on a later refresh");
+      partial.remove();
+      localStorage.clear();
+
+      const failed = document.createElement("yad-widget-calendar");
+      failed.config = { type: "calendar", entities: ["calendar.bad", "calendar.good"], days: 14 };
+      failed.hass = { ...hass, callApi: async (_method, path) => {
+        if (path.startsWith("calendars/calendar.bad?")) throw new Error("Access denied");
+        return [event("Available event", monday)];
+      } };
+      document.body.append(failed);
+      await settle(failed);
+      check(failed.shadowRoot.textContent.includes("Available event") && failed.shadowRoot.querySelector('[role="alert"]')?.textContent.includes("Access denied"), "A rejected calendar must not block other calendars");
+      failed.remove();
+      localStorage.clear();
+
+      const allFailed = document.createElement("yad-widget-calendar");
+      allFailed.config = { type: "calendar", entities: ["calendar.bad"], days: 14 };
+      allFailed.hass = { ...hass, callApi: async () => { throw new Error("Access denied"); } };
+      document.body.append(allFailed);
+      await settle(allFailed);
+      check(allFailed.shadowRoot.textContent.includes("Access denied"), "Complete calendar failures must be visible");
+      allFailed.remove();
+      const failedReload = document.createElement("yad-widget-calendar");
+      failedReload.config = allFailed.config;
+      failedReload.hass = allFailed.hass;
+      document.body.append(failedReload);
+      await settle(failedReload);
+      check(failedReload.shadowRoot.textContent.includes("Access denied") && !failedReload.shadowRoot.textContent.includes("Loading"), "A cached failure must remain visible after reload");
+      failedReload.remove();
+      localStorage.clear();
+
+      let releaseOld;
+      const changing = document.createElement("yad-widget-calendar");
+      changing.config = { type: "calendar", entities: ["calendar.old"], days: 14 };
+      changing.hass = { ...hass, callApi: async (_method, path) => {
+        if (path.startsWith("calendars/calendar.old?")) return new Promise((resolve) => { releaseOld = resolve; });
+        return [event("New configuration", monday)];
+      } };
+      document.body.append(changing);
+      await changing.updateComplete;
+      changing.config = { ...changing.config, entities: ["calendar.new"] };
+      await changing.updateComplete;
+      releaseOld([event("Old configuration", monday)]);
+      await settle(changing);
+      check(changing.shadowRoot.textContent.includes("New configuration") && !changing.shadowRoot.textContent.includes("Old configuration"), "Changing calendars during a fetch must load the new configuration");
+      changing.remove();
+      localStorage.clear();
+    } finally {
+      window.setTimeout = realSetTimeout;
+    }
+
+    const menuCalls = [];
+    let releaseMenuImage;
+    const menu = document.createElement("yad-widget-menu");
+    const selectedMedia = { media_content_id: "media-source://menu-one", media_content_type: "image/png" };
+    const menuItems = [
+      { name: "Home", path: "/", icon: "mdi:home", background_media: selectedMedia },
+      { name: "Kitchen", path: "/kitchen", background_media: selectedMedia },
+      { name: "Bedroom", path: "/bedroom", background_media: { media_content_id: "media-source://pending-menu" } },
+      { name: "Plain", path: "/plain" },
+    ];
+    menu.config = { type: "menu", items: menuItems };
+    menu.style.setProperty("--h-accent", "#287f8e");
+    menu.hass = { ...hass, callWS: async (message) => {
+      menuCalls.push(message.media_content_id);
+      if (message.media_content_id === "media-source://pending-menu") return new Promise((resolve) => { releaseMenuImage = resolve; });
+      if (message.media_content_id === "media-source://bad-menu") throw new Error("Media access denied");
+      if (message.media_content_id === "media-source://audio-menu") return { url: image, mime_type: "audio/mpeg" };
+      return { url: image, mime_type: "image/svg+xml" };
+    } };
+    document.body.append(menu);
+    await settle(menu);
+    check(menu.shadowRoot.querySelectorAll(".button-image").length === 2 && menuCalls.filter((id) => id === "media-source://menu-one").length === 1, "Menu buttons must share and render resolved images");
+    check(menu.shadowRoot.querySelector(".item.active.has-image")?.getAttribute("aria-current") === "page" && menu.shadowRoot.querySelector(".item.has-image ha-icon"), "Image buttons must retain active and icon states");
+    check(getComputedStyle(menu.shadowRoot.querySelector(".button-image")).objectFit === "cover" && getComputedStyle(menu.shadowRoot.querySelector(".item.has-image"), "::before").backgroundColor === "rgba(0, 0, 0, 0.6)", "Menu images must fill buttons with a readable overlay");
+    check(getComputedStyle(menu.shadowRoot.querySelector(".item.active.has-image"), "::after").borderTopWidth === "3px", "The active image button must remain visibly highlighted");
+    const previousUrl = location.href;
+    history.replaceState(null, "", "/?kiosk");
+    menu.shadowRoot.querySelectorAll(".item")[1].click();
+    check(location.pathname === "/kitchen" && location.search === "?kiosk", "Image buttons must preserve menu navigation and kiosk flags");
+    history.replaceState(null, "", previousUrl);
+    window.dispatchEvent(new CustomEvent("location-changed"));
+    menu.config = { ...menu.config, items: [
+      menuItems[0],
+      { ...menuItems[1], background_media: { media_content_id: "media-source://bad-menu" } },
+      { ...menuItems[2], background_media: { media_content_id: "media-source://audio-menu" } },
+      menuItems[3],
+    ] };
+    await settle(menu);
+    releaseMenuImage({ url: "/stale-menu.png", mime_type: "image/png" });
+    await settle(menu);
+    const menuButtons = [...menu.shadowRoot.querySelectorAll(".item")];
+    check(!menu.shadowRoot.querySelector('img[src="/stale-menu.png"]') && menuButtons[1].textContent.includes("Image unavailable") && menuButtons[1].querySelector('[role="alert"]').title.includes("Media access denied"), "Menu image errors and stale resolutions must be handled");
+    check(menuButtons[2].querySelector('[role="alert"]').title.includes("Select an image"), "Menu backgrounds must reject non-image media");
+    menuButtons[0].querySelector("img").dispatchEvent(new Event("error"));
+    await settle(menu);
+    check(menu.shadowRoot.querySelector(".item [role=alert]")?.textContent.includes("Image unavailable"), "Broken menu image URLs must be visible");
+    menu.config = { ...menu.config, items: [menuItems[3]] };
+    await settle(menu);
+    check(!menu.shadowRoot.querySelector(".button-image") && !menu.shadowRoot.querySelector('[role="alert"]'), "Removing an image must restore a normal button");
+    menu.remove();
+
     const editor = document.createElement("yad-card-editor");
     editor.hass = hass;
     editor.setConfig(baseConfig);
@@ -322,7 +468,183 @@ try {
     calendarForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...calendarForm.data, day_position: "left", time_position: "right" } } }));
     check(calendarConfig.widgets[0].day_position === "left" && calendarConfig.widgets[0].time_position === "right", "Calendar layout choices must persist in widget configuration");
     calendarEditor.remove();
-    return ["background controls and failures", "quarter-row geometry", "vehicle data and actions", "calendar weekends, badges and layouts", "editor media/upload and collapsed palettes"];
+    const menuEditor = document.createElement("yad-card-editor");
+    menuEditor.hass = hass;
+    menuEditor.setConfig({ type: "custom:yad-card", widgets: [{ type: "menu", items: [menuItems[0]] }] });
+    document.body.append(menuEditor);
+    await settle(menuEditor);
+    menuEditor.shadowRoot.querySelector('button[title="Edit"]').click();
+    await settle(menuEditor);
+    const menuForm = [...menuEditor.shadowRoot.querySelectorAll("ha-form")].find((form) => form.schema.some((field) => field.name === "items"));
+    const imageSelector = menuForm.schema.find((field) => field.name === "items").selector.object.fields.background_media.selector.media;
+    check(imageSelector.image_upload && imageSelector.accept[0] === "image/*", "Menu editor must use the HA image picker with uploads");
+    let menuConfig;
+    menuEditor.addEventListener("config-changed", (event) => { menuConfig = event.detail.config; });
+    menuForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...menuForm.data, items: [menuItems[0], menuItems[3]] } } }));
+    check(menuConfig.widgets[0].items[0].background_media.media_content_id === selectedMedia.media_content_id && menuConfig.widgets[0].items[1].name === "Plain", "Menu editor must persist button images and other items");
+    menuEditor.remove();
+
+    const pagesEditor = document.createElement("yad-card-editor");
+    pagesEditor.hass = hass;
+    pagesEditor.setConfig({ ...baseConfig, widgets: [{ type: "menu", direction: "horizontal", font_size: 20, items: [menuItems[0]] }, { type: "clock", title: "Original clock" }] });
+    document.body.append(pagesEditor);
+    await settle(pagesEditor);
+    let pagesConfig;
+    let pagesConfigEvents = 0;
+    pagesEditor.addEventListener("config-changed", (event) => { pagesConfig = event.detail.config; pagesConfigEvents++; });
+    const pagesSection = pagesEditor.shadowRoot.querySelector("details.pages-section");
+    check(!pagesSection.open, "Pages & menu must start collapsed");
+    pagesSection.querySelector("summary").click();
+    await settle(pagesEditor);
+    check(pagesSection.open && !pagesConfig, "Expanding the section must not change the saved config");
+    [...pagesEditor.shadowRoot.querySelectorAll("button")].find((button) => button.textContent.includes("Set up pages")).click();
+    await settle(pagesEditor);
+    check(pagesConfig.pages.length === 1 && pagesConfig.pages[0].widgets.length === 2 && pagesConfig.widgets.length === 0, "Enabling pages must retain existing widgets on the first page");
+    check(pagesConfig.shared_menu.direction === "horizontal" && pagesConfig.shared_menu.font_size === 20, "Existing menu appearance must be retained as shared settings");
+    [...pagesEditor.shadowRoot.querySelectorAll("button")].find((button) => button.textContent.includes("Add page")).click();
+    await settle(pagesEditor);
+    check(pagesConfig.pages.length === 2 && pagesConfig.pages[1].widgets[0].type === "menu", "A new page must have a shared menu for navigation");
+    let pageToggles = pagesEditor.shadowRoot.querySelectorAll(".page-toggle");
+    check(pageToggles[0].getAttribute("aria-expanded") === "false" && pageToggles[1].getAttribute("aria-expanded") === "true" && pagesEditor.shadowRoot.querySelectorAll(".page ha-form").length === 1, "Adding a page must expand only that page");
+    const configEventsBeforeToggle = pagesConfigEvents;
+    pageToggles[0].click();
+    await settle(pagesEditor);
+    pageToggles = pagesEditor.shadowRoot.querySelectorAll(".page-toggle");
+    check(pageToggles[0].getAttribute("aria-expanded") === "true" && pageToggles[1].getAttribute("aria-expanded") === "false" && pagesEditor.shadowRoot.querySelectorAll(".page ha-form").length === 1, "Opening another page must collapse the previous page");
+    pageToggles[0].click();
+    await settle(pagesEditor);
+    check(pagesEditor.shadowRoot.querySelectorAll(".page ha-form").length === 0, "An open page can be collapsed");
+    pagesEditor.shadowRoot.querySelectorAll(".page-toggle")[1].click();
+    await settle(pagesEditor);
+    check(pagesConfigEvents === configEventsBeforeToggle, "Expanding pages must not change the saved config");
+    const pageForm = pagesEditor.shadowRoot.querySelector(".page ha-form");
+    check(pageForm.schema.find((field) => field.name === "background_media").selector.media.image_upload, "Page button image must use the media picker");
+    pageForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...pageForm.data, name: "Kitchen", icon: "mdi:stove", background_media: selectedMedia } } }));
+    await settle(pagesEditor);
+    check(pagesConfig.pages[1].name === "Kitchen" && pagesConfig.pages[1].background_media.media_content_id === selectedMedia.media_content_id, "Page menu details must be saved");
+    const sharedMenuForm = [...pagesEditor.shadowRoot.querySelectorAll("ha-form")].find((form) => form.schema.some((field) => field.schema?.some((child) => child.name === "direction")));
+    sharedMenuForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...sharedMenuForm.data, direction: "vertical", show_icons: false } } }));
+    check(pagesConfig.shared_menu.direction === "vertical" && pagesConfig.shared_menu.show_icons === false, "Shared menu appearance must be editable once");
+    [...pagesEditor.shadowRoot.querySelectorAll("button")].find((button) => button.textContent.includes("Add widget")).click();
+    await settle(pagesEditor);
+    [...pagesEditor.shadowRoot.querySelectorAll("button.pick")].find((button) => button.textContent.includes("Sensors")).click();
+    await settle(pagesEditor);
+    check(pagesConfig.pages[1].widgets.some((widget) => widget.type === "sensors") && pagesConfig.pages[0].widgets.length === 2, "Adding a widget must affect only the selected page");
+    pagesEditor.shadowRoot.querySelector('.editor-head button[title="Back"]').click();
+    await settle(pagesEditor);
+    check(pagesEditor.shadowRoot.querySelector("details.pages-section").open, "Returning from widget editing must preserve the open section");
+    pagesEditor.shadowRoot.querySelectorAll(".page-toggle")[0].click();
+    await settle(pagesEditor);
+    pagesEditor.shadowRoot.querySelector(".page .text-btn").click();
+    await settle(pagesEditor);
+    check(pagesEditor.shadowRoot.textContent.includes("Original clock"), "Selecting a page must show its widget list");
+    pagesEditor.shadowRoot.querySelector('.list button[title="Edit"]').click();
+    await settle(pagesEditor);
+    check(pagesEditor.shadowRoot.textContent.includes("Menu buttons are configured in Pages & menu.") && ![...pagesEditor.shadowRoot.querySelectorAll("ha-form")].some((form) => form.schema.some((field) => field.name === "items")), "Page menu widgets must use shared configuration rather than editing button lists");
+    pagesEditor.shadowRoot.querySelector('.editor-head button[title="Back"]').click();
+    await settle(pagesEditor);
+    pagesEditor.shadowRoot.querySelector('.page button[title="Move page down"]').click();
+    await settle(pagesEditor);
+    check(pagesConfig.pages[1].name === "Home" && pagesConfig.pages[1].widgets.some((widget) => widget.type === "clock"), "Reordering pages must preserve their widgets");
+    check(pagesEditor.shadowRoot.querySelectorAll(".page-toggle")[1].getAttribute("aria-expanded") === "true", "The expanded page must remain open after reordering");
+    const currentSection = pagesEditor.shadowRoot.querySelector("details.pages-section");
+    currentSection.querySelector("summary").click();
+    await settle(pagesEditor);
+    check(!currentSection.open, "Pages & menu must be collapsible");
+    currentSection.querySelector("summary").click();
+    await settle(pagesEditor);
+    check(currentSection.open && pagesEditor.shadowRoot.querySelectorAll(".page-toggle")[1].getAttribute("aria-expanded") === "true", "Reopening the section must retain the expanded page");
+    const generalForm = pagesEditor.shadowRoot.querySelector("ha-form");
+    generalForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...generalForm.data, columns: 5 } } }));
+    check(pagesConfig.pages.length === 2 && pagesConfig.columns === 5, "General settings must preserve pages");
+    await settle(pagesEditor);
+    pagesEditor.shadowRoot.querySelector('.page button[title="Remove page"]').click();
+    await settle(pagesEditor);
+    check(pagesConfig.pages.length === 2 && pagesEditor.shadowRoot.textContent.includes("Remove this page and all its widgets?"), "Page removal must require confirmation");
+    check(pagesEditor.shadowRoot.querySelectorAll(".page-toggle")[0].getAttribute("aria-expanded") === "true" && pagesEditor.shadowRoot.querySelectorAll(".page ha-form").length === 1, "Removing a collapsed page must open only its confirmation");
+    [...pagesEditor.shadowRoot.querySelectorAll(".page button")].find((button) => button.textContent.trim() === "Remove page").click();
+    await settle(pagesEditor);
+    check(pagesConfig.pages.length === 1 && pagesConfig.pages[0].name === "Home", "Confirming removal must remove only the chosen page");
+    pagesEditor.remove();
+
+    const newPagesEditor = document.createElement("yad-card-editor");
+    newPagesEditor.hass = hass;
+    newPagesEditor.setConfig(baseConfig);
+    document.body.append(newPagesEditor);
+    await settle(newPagesEditor);
+    let newPagesConfig;
+    newPagesEditor.addEventListener("config-changed", (event) => { newPagesConfig = event.detail.config; });
+    newPagesEditor.shadowRoot.querySelector("details.pages-section summary").click();
+    await settle(newPagesEditor);
+    [...newPagesEditor.shadowRoot.querySelectorAll("button")].find((button) => button.textContent.includes("Set up pages")).click();
+    check(newPagesConfig.pages[0].widgets.some((widget) => widget.type === "clock") && newPagesConfig.pages[0].widgets.some((widget) => widget.type === "menu"), "Page setup must add navigation without losing existing widgets");
+    newPagesEditor.remove();
+
+    const originalUrl = location.href;
+    history.replaceState(null, "", "/?kiosk#dashboard");
+    const pageCard = document.createElement("yad-card");
+    pageCard.hass = { ...hass, callWS: async () => ({ url: image, mime_type: "image/svg+xml" }) };
+    const pageConfig = {
+      ...baseConfig,
+      widgets: [],
+      shared_menu: { direction: "horizontal", show_icons: false, font_size: 22 },
+      pages: [
+        { id: "home", name: "Home", icon: "mdi:home", widgets: [{ type: "menu" }, { type: "clock" }] },
+        { id: "kitchen", name: "Kitchen", icon: "mdi:stove", background_media: selectedMedia, widgets: [{ type: "menu" }, { type: "spacer" }] },
+      ],
+    };
+    pageCard.setConfig(pageConfig);
+    document.body.append(pageCard);
+    await settle(pageCard);
+    let pageMenu = pageCard.shadowRoot.querySelector("yad-widget-menu");
+    await settle(pageMenu);
+    check(pageCard.shadowRoot.querySelector("yad-widget-clock") && pageMenu.shadowRoot.querySelectorAll(".item").length === 2 && pageMenu.shadowRoot.querySelector(".active").textContent.includes("Home"), "The first page and shared menu must render by default");
+    check(pageMenu.shadowRoot.querySelector(".menu.horizontal") && !pageMenu.shadowRoot.querySelector(".item ha-icon") && pageMenu.shadowRoot.querySelector(".menu").style.fontSize === "22px", "Shared menu appearance must apply to the page");
+    pageMenu.shadowRoot.querySelectorAll(".item")[1].click();
+    await settle(pageCard);
+    pageMenu = pageCard.shadowRoot.querySelector("yad-widget-menu");
+    await settle(pageMenu);
+    check(pageCard.shadowRoot.querySelector("yad-widget-spacer") && !pageCard.shadowRoot.querySelector("yad-widget-clock") && pageMenu.shadowRoot.querySelector(".active").textContent.includes("Kitchen"), "Switching pages must render only that page's widgets and highlight it");
+    check(pageMenu.shadowRoot.querySelector(".menu.horizontal") && !pageMenu.shadowRoot.querySelector(".item ha-icon"), "All pages must use the same menu appearance");
+    check(new URL(location.href).searchParams.get("yad-page") === "kitchen" && location.search.includes("kiosk") && location.hash === "#dashboard", "Page navigation must preserve query flags and hash");
+    check(pageMenu.shadowRoot.querySelectorAll(".button-image").length === 1, "The shared menu must display page images");
+    const back = new Promise((resolve) => window.addEventListener("popstate", resolve, { once: true }));
+    history.back();
+    await back;
+    await settle(pageCard);
+    check(pageCard.shadowRoot.querySelector("yad-widget-clock"), "Browser back must restore the previous page");
+    history.replaceState(null, "", "/?kiosk&yad-page=kitchen");
+    const reloadedPage = document.createElement("yad-card");
+    reloadedPage.hass = hass;
+    reloadedPage.setConfig(pageConfig);
+    document.body.append(reloadedPage);
+    await settle(reloadedPage);
+    check(reloadedPage.shadowRoot.querySelector("yad-widget-spacer"), "A page link must restore the selected page on reload");
+    reloadedPage.remove();
+    history.replaceState(null, "", "/?kiosk&yad-page=missing");
+    window.dispatchEvent(new CustomEvent("location-changed"));
+    await settle(pageCard);
+    check(pageCard.shadowRoot.querySelector("yad-widget-clock"), "Unknown page IDs must fall back to the first page");
+    pageCard.remove();
+    const previewCard = document.createElement("yad-card");
+    previewCard.preview = true;
+    previewCard.hass = hass;
+    previewCard.setConfig(pageConfig);
+    document.body.append(previewCard);
+    await settle(previewCard);
+    const previewUrl = location.href;
+    window.dispatchEvent(new CustomEvent("yad-editor-page-selected", { detail: { page: "kitchen" } }));
+    await settle(previewCard);
+    check(previewCard.shadowRoot.querySelector("yad-widget-spacer") && location.href === previewUrl, "Editing a page must update the card preview without navigating the dashboard");
+    const previewMenu = previewCard.shadowRoot.querySelector("yad-widget-menu");
+    await settle(previewMenu);
+    previewMenu.shadowRoot.querySelector(".item").click();
+    await settle(previewCard);
+    check(previewCard.shadowRoot.querySelector("yad-widget-clock") && location.href === previewUrl, "Preview menu navigation must not change the dashboard URL");
+    previewCard.remove();
+    history.replaceState(null, "", originalUrl);
+    window.dispatchEvent(new CustomEvent("location-changed"));
+    return ["background controls and failures", "quarter-row geometry", "vehicle data and actions", "calendar weekends, badges and layouts", "menu button images", "internal pages and editor", "editor media/upload and collapsed palettes"];
   });
   console.log(`PASS features: ${features.join("; ")}`);
   await page.setViewportSize({ width: 1000, height: 800 });
@@ -492,6 +814,8 @@ try {
   await page.clock.install();
   await page.evaluate(async () => {
     window.backgroundRenewals = 0;
+    window.menuRenewals = 0;
+    window.menuRetries = 0;
     const card = document.createElement("yad-card");
     card.hass = {
       states: {},
@@ -504,13 +828,45 @@ try {
     document.body.append(card);
     await card.updateComplete;
     await card.updateComplete;
+    const menu = document.createElement("yad-widget-menu");
+    menu.config = { type: "menu", items: [{ name: "Home", path: "/", background_media: { media_content_id: "media-source://menu-renewal" } }] };
+    menu.hass = {
+      states: {},
+      callWS: async () => {
+        window.menuRenewals++;
+        return { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E", mime_type: "image/svg+xml" };
+      },
+    };
+    document.body.append(menu);
+    await menu.updateComplete;
+    await menu.updateComplete;
+    const retryMenu = document.createElement("yad-widget-menu");
+    retryMenu.id = "retry-menu";
+    retryMenu.config = { type: "menu", items: [{ name: "Retry", path: "/retry", background_media: { media_content_id: "media-source://retry" } }] };
+    retryMenu.hass = {
+      states: {},
+      callWS: async () => {
+        window.menuRetries++;
+        if (window.menuRetries === 1) throw new Error("Temporary media error");
+        return { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E", mime_type: "image/svg+xml" };
+      },
+    };
+    document.body.append(retryMenu);
+    await retryMenu.updateComplete;
+    await retryMenu.updateComplete;
   });
+  await page.clock.fastForward(60_100);
+  assert.equal(await page.evaluate(() => window.menuRetries), 2, "Failed menu images must be retried");
+  assert.equal(await page.evaluate(() => document.querySelector("#retry-menu").shadowRoot.querySelectorAll(".button-image").length), 1, "Menu image should render after retry succeeds");
+  await page.evaluate(() => document.querySelector("#retry-menu").remove());
   await page.clock.fastForward(23 * 60 * 60 * 1000 + 100);
   assert.equal(await page.evaluate(() => window.backgroundRenewals), 2, "Signed background URLs must renew before expiry");
-  await page.evaluate(() => document.querySelector("yad-card").remove());
+  assert.equal(await page.evaluate(() => window.menuRenewals), 2, "Signed menu image URLs must renew before expiry");
+  await page.evaluate(() => { document.querySelector("yad-card").remove(); document.querySelector("yad-widget-menu").remove(); });
   await page.clock.fastForward(23 * 60 * 60 * 1000 + 100);
   assert.equal(await page.evaluate(() => window.backgroundRenewals), 2, "Disconnected cards must stop renewing backgrounds");
-  console.log("PASS background media renewal and timer cleanup");
+  assert.equal(await page.evaluate(() => window.menuRenewals), 2, "Disconnected menus must stop renewing images");
+  console.log("PASS background and menu image renewal and timer cleanup");
   assert.deepEqual(errors, [], "The production bundle must not cause browser exceptions");
   console.log(`PASS ${manifest.filename}: cards, clock rendering, widgets, editor and card picker`);
 } finally {

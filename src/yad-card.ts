@@ -1,8 +1,10 @@
 import { css, html, LitElement, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
+import { keyed } from "lit/directives/keyed.js";
 import { styleMap } from "lit/directives/style-map.js";
 import { html as staticHtml, unsafeStatic } from "lit/static-html.js";
+import { resolveImageMedia } from "./image-media";
 import { paletteVars, resolvePalette } from "./palettes";
 import { autoScale, SCREENS } from "./screens";
 import { themeStyles } from "./styles";
@@ -42,6 +44,7 @@ export class YadCard extends LitElement {
   @state() private _size = { width: 0, top: 0 };
   @state() private _backgroundUrl?: string;
   @state() private _backgroundError?: string;
+  @state() private _pageId = new URL(window.location.href).searchParams.get("yad-page") ?? "";
   private _backgroundKey?: string;
   private _backgroundRequest = 0;
   private _backgroundTimer?: number;
@@ -49,6 +52,13 @@ export class YadCard extends LitElement {
   private _onOrientation = (e: MediaQueryListEvent) => (this._portraitMedia = e.matches);
   private _resizeObserver = new ResizeObserver(() => this._measure());
   private _onWindowResize = () => this._measure();
+  private _onLocation = (): void => {
+    if (this.preview) return;
+    this._selectPage(new URL(window.location.href).searchParams.get("yad-page") ?? "");
+  };
+  private _onEditorPage = (event: Event): void => {
+    if (this.preview && event instanceof CustomEvent && typeof event.detail?.page === "string") this._selectPage(event.detail.page);
+  };
   /** Fitted grid spans (in quarter rows) for automatic-height widgets, keyed by orientation and widget index. */
   @state() private _autoSpans: Record<string, number> = {};
   /** Row track measured at full spans, used when every widget has automatic height. */
@@ -91,7 +101,18 @@ export class YadCard extends LitElement {
   public setConfig(config: DashboardConfig): void {
     if (!config) throw new Error("Invalid configuration");
     if (config.widgets !== undefined && !Array.isArray(config.widgets)) throw new Error("`widgets` must be a list");
-    for (const w of config.widgets ?? []) {
+    if (config.pages !== undefined && (!Array.isArray(config.pages) || !config.pages.length)) {
+      throw new Error("`pages` must be a non-empty list");
+    }
+    const ids = new Set<string>();
+    for (const page of config.pages ?? []) {
+      if (!page || typeof page.id !== "string" || !page.id || typeof page.name !== "string" || !Array.isArray(page.widgets)) {
+        throw new Error("Every page needs an ID, name and widget list");
+      }
+      if (ids.has(page.id)) throw new Error("Page IDs must be unique");
+      ids.add(page.id);
+    }
+    for (const w of [...(config.widgets ?? []), ...(config.pages ?? []).flatMap((page) => page.widgets)]) {
       if (!w || typeof w !== "object" || !w.type) throw new Error("Every widget needs a `type`");
       if (w.auto_height_max !== undefined && (!Number.isFinite(w.auto_height_max) || w.auto_height_max < 60)) {
         throw new Error("Automatic height limit must be at least 60px");
@@ -104,7 +125,11 @@ export class YadCard extends LitElement {
         }
       }
     }
-    const next = { ...config, widgets: migrateWidgets(config.widgets ?? []) };
+    const next = {
+      ...config,
+      widgets: migrateWidgets(config.widgets ?? []),
+      ...(config.pages ? { pages: config.pages.map((page) => ({ ...page, widgets: migrateWidgets(page.widgets) })) } : {}),
+    };
     // Retire v0.5's dashboard-wide compact setting without breaking saved configurations.
     Reflect.deleteProperty(next, "layout_mode");
     this._config = next;
@@ -127,6 +152,10 @@ export class YadCard extends LitElement {
     this._portraitMedia = this._mql.matches;
     this._resizeObserver.observe(this);
     window.addEventListener("resize", this._onWindowResize);
+    window.addEventListener("location-changed", this._onLocation);
+    window.addEventListener("popstate", this._onLocation);
+    window.addEventListener("yad-editor-page-selected", this._onEditorPage);
+    this._onLocation();
     this.requestUpdate();
   }
 
@@ -138,6 +167,9 @@ export class YadCard extends LitElement {
     if (this._fitFrame) cancelAnimationFrame(this._fitFrame);
     this._fitFrame = undefined;
     window.removeEventListener("resize", this._onWindowResize);
+    window.removeEventListener("location-changed", this._onLocation);
+    window.removeEventListener("popstate", this._onLocation);
+    window.removeEventListener("yad-editor-page-selected", this._onEditorPage);
     window.clearTimeout(this._backgroundTimer);
     this._backgroundRequest++;
     this._backgroundKey = undefined;
@@ -232,13 +264,9 @@ export class YadCard extends LitElement {
       return;
     }
     try {
-      const media = await this.hass!.callWS<{ url: string; mime_type: string }>({
-        type: "media_source/resolve_media",
-        media_content_id: source,
-      });
+      const url = await resolveImageMedia(this.hass!, source);
       if (request !== this._backgroundRequest) return;
-      if (!media.url || !media.mime_type?.startsWith("image/")) throw new Error("Select an image for the background");
-      this._backgroundUrl = media.url;
+      this._backgroundUrl = url;
       // Media-source URLs are signed for 24 hours; refresh on long-running displays.
       this._backgroundTimer = window.setTimeout(() => void this._resolveBackground(source), 23 * 60 * 60 * 1000);
     } catch (error) {
@@ -276,10 +304,45 @@ export class YadCard extends LitElement {
     return t;
   }
 
+  private _selectPage(id: string): void {
+    if (id === this._pageId) return;
+    this._pageId = id;
+    this._autoSpans = {};
+    this._packedTrack = undefined;
+    this._fitPasses = 0;
+  }
+
+  private _navigatePage = (event: CustomEvent<{ page: string }>): void => {
+    event.stopPropagation();
+    const id = event.detail.page;
+    if (!this._config?.pages?.some((page) => page.id === id)) return;
+    if (this.preview) {
+      this._selectPage(id);
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("yad-page", id);
+    window.history.pushState(null, "", url);
+    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+  };
+
   private _renderWidget(w: WidgetConfig, index: number, portrait: boolean, columns: number, quarters: boolean) {
     const def = WIDGETS[w.type];
     const displayOnly = !!this._config!.display_only;
-    const merged = { ...def?.defaults, ...w };
+    const pages = this._config!.pages;
+    const activePage = pages?.find((page) => page.id === this._pageId) ?? pages?.[0];
+    const merged = {
+      ...def?.defaults, ...w,
+      ...(w.type === "menu" && pages ? {
+        page_mode: true,
+        active_page: activePage?.id,
+        title: this._config!.shared_menu?.title,
+        direction: this._config!.shared_menu?.direction ?? "vertical",
+        show_icons: this._config!.shared_menu?.show_icons ?? true,
+        font_size: this._config!.shared_menu?.font_size,
+        items: pages.map((page) => ({ name: page.name || page.id, path: page.id, icon: page.icon, background_media: page.background_media })),
+      } : {}),
+    };
     const colSpan = Math.min(columns, Math.max(1, (portrait ? merged.portrait_col_span : undefined) ?? merged.col_span ?? 1));
     const requestedRows = (portrait ? merged.portrait_row_span : undefined) ?? merged.row_span ?? 1;
     const rowSpan = w.type === "spacer" ? requestedRows : Math.max(1, Math.round(requestedRows));
@@ -321,11 +384,13 @@ export class YadCard extends LitElement {
   protected render() {
     if (!this._config) return nothing;
     const c = { ...DEFAULTS, ...this._config };
+    const page = c.pages?.find((entry) => entry.id === this._pageId) ?? c.pages?.[0];
+    const widgets = page?.widgets ?? c.widgets;
     const portrait = this._portrait;
     const columns = Math.max(1, portrait ? c.portrait_columns : c.columns);
     const fixed = this._fixedScreen(c, portrait);
     const fill = !!fixed || c.height !== "auto";
-    const visible = c.widgets.filter((w) => {
+    const visible = widgets.filter((w) => {
       const v = w.visibility ?? "all";
       return v === "all" || (v === "portrait") === portrait;
     });
@@ -397,10 +462,10 @@ export class YadCard extends LitElement {
         >` : nothing}
         ${this._backgroundError ? html`<div class="background-error" role="alert">${this._backgroundError}</div>` : nothing}
         <div class="canvas" style=${styleMap(canvasStyle)}>
-          <div class="grid">
-            ${visible.length
-              ? visible.map((w) => this._renderWidget(w, c.widgets.indexOf(w), portrait, columns, quarters))
-              : html`<div class="tile intro">Add some widgets in the card editor to get started.</div>`}
+          <div class="grid" @yad-page-selected=${this._navigatePage}>
+            ${keyed(page?.id ?? "", visible.length
+              ? visible.map((w) => this._renderWidget(w, widgets.indexOf(w), portrait, columns, quarters))
+              : html`<div class="tile intro">Add some widgets in the card editor to get started.</div>`)}
           </div>
         </div>
       </div>

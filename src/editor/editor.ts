@@ -1,8 +1,9 @@
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { IMAGE_MEDIA_SELECTOR } from "../image-media";
 import { PALETTES, type PaletteColors } from "../palettes";
 import { SCREENS } from "../screens";
-import type { DashboardConfig, HomeAssistant, WidgetConfig, WidgetType } from "../types";
+import type { DashboardConfig, DashboardPage, HomeAssistant, WidgetConfig, WidgetType } from "../types";
 import { fireEvent } from "../utils";
 import { VERSION } from "../version";
 import { LABELS, LAYOUT_SCHEMA, migrateWidgets, spacerLayoutSchema, WIDGETS } from "../widgets/registry";
@@ -34,8 +35,8 @@ const generalSchema = (config: DashboardConfig) => {
         ...(screen !== "fill"
           ? [select("ui_scale", [["auto", "Auto"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["1.75", "175%"], ["2", "200%"], ["3", "300%"]])]
           : []),
-        number("columns", 1, 12),
-        number("portrait_columns", 1, 12),
+        number("columns", 1, 16),
+        number("portrait_columns", 1, 32),
         ...(screen === "fill"
           ? [select("height", [["screen", "Fill the screen"], ["auto", "Fixed row height (scrolls)"]], true), number("row_height", 60, 600, "px", 10)]
           : []),
@@ -71,7 +72,7 @@ const BEHAVIOUR_SCHEMA = [
 ];
 
 const BACKGROUND_SCHEMA = [
-  { name: "background_media", selector: { media: { accept: ["image/*"], image_upload: true } } },
+  { name: "background_media", selector: IMAGE_MEDIA_SELECTOR },
   { name: "background", selector: { text: {} } },
   { type: "grid", name: "", schema: [
     number("background_opacity", 0, 100, "%"),
@@ -79,6 +80,12 @@ const BACKGROUND_SCHEMA = [
     select("background_fit", [["cover", "Fill (cover)"], ["contain", "Fit whole image"]]),
     select("background_position", [["center", "Centre"], ["top", "Top"], ["bottom", "Bottom"], ["left", "Left"], ["right", "Right"]]),
   ] },
+];
+
+const PAGE_SCHEMA = [
+  { name: "name", required: true, selector: { text: {} } },
+  { name: "icon", selector: { icon: {} } },
+  { name: "background_media", selector: IMAGE_MEDIA_SELECTOR },
 ];
 
 const GENERAL_LABELS: Record<string, string> = {
@@ -118,6 +125,8 @@ const CUSTOM_FIELDS: [keyof PaletteColors, string][] = [
 const clean = <T extends Record<string, any>>(obj: T): T =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== "" && v !== null)) as T;
 
+let nextPageId = 0;
+
 @customElement("yad-card-editor")
 export class YadEditor extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -125,11 +134,20 @@ export class YadEditor extends LitElement {
   @state() private _selected?: number;
   @state() private _adding = false;
   @state() private _yamlError?: string;
+  @state() private _editingPageId?: string;
+  @state() private _removingPageId?: string;
+  @state() private _pagesOpen = false;
+  @state() private _expandedPageId?: string;
 
   public setConfig(config: DashboardConfig): void {
-    this._config = { ...config, widgets: migrateWidgets(config.widgets ?? []) };
+    this._config = {
+      ...config, widgets: migrateWidgets(config.widgets ?? []),
+      ...(config.pages ? { pages: config.pages.map((page) => ({ ...page, widgets: migrateWidgets(page.widgets) })) } : {}),
+    };
     Reflect.deleteProperty(this._config, "layout_mode");
-    if (this._selected !== undefined && this._selected >= this._config.widgets.length) this._selected = undefined;
+    if (!this._config.pages?.some((page) => page.id === this._editingPageId)) this._editingPageId = this._config.pages?.[0]?.id;
+    if (!this._config.pages?.some((page) => page.id === this._expandedPageId)) this._expandedPageId = undefined;
+    if (this._selected !== undefined && this._selected >= this._widgets.length) this._selected = undefined;
   }
 
   connectedCallback(): void {
@@ -158,7 +176,7 @@ export class YadEditor extends LitElement {
   private _generalChanged(ev: CustomEvent): void {
     ev.stopPropagation();
     const { widgets, ...rest } = ev.detail.value as DashboardConfig;
-    this._commit({ ...clean(rest), widgets: this._config!.widgets } as DashboardConfig);
+    this._commit({ ...clean(rest), widgets: this._config!.widgets, pages: this._config!.pages, shared_menu: this._config!.shared_menu } as DashboardConfig);
   }
 
   private _backgroundChanged(ev: CustomEvent): void {
@@ -176,15 +194,36 @@ export class YadEditor extends LitElement {
     });
   }
 
+  private get _widgets(): WidgetConfig[] {
+    const page = this._config?.pages?.find((item) => item.id === this._editingPageId);
+    return page?.widgets ?? this._config?.widgets ?? [];
+  }
+
+  private _setWidgets(widgets: WidgetConfig[]): void {
+    if (this._config!.pages) {
+      this._commit({
+        ...this._config!,
+        pages: this._config!.pages.map((page) => page.id === this._editingPageId ? { ...page, widgets } : page),
+      });
+    } else {
+      this._commit({ ...this._config!, widgets });
+    }
+  }
+
   private _updateWidget(index: number, widget: WidgetConfig): void {
-    const widgets = [...this._config!.widgets];
+    const widgets = [...this._widgets];
     widgets[index] = widget;
-    this._commit({ ...this._config!, widgets });
+    this._setWidgets(widgets);
   }
 
   private _widgetChanged(ev: CustomEvent, index: number): void {
     ev.stopPropagation();
-    this._updateWidget(index, clean({ ...ev.detail.value, type: this._config!.widgets[index].type }));
+    const widget = this._widgets[index];
+    this._updateWidget(index, clean({
+      ...ev.detail.value,
+      ...(this._config!.pages && widget.type === "menu" ? { items: widget.items } : {}),
+      type: widget.type,
+    }));
   }
 
   private _cardYamlChanged(ev: CustomEvent, index: number): void {
@@ -194,35 +233,100 @@ export class YadEditor extends LitElement {
       return;
     }
     this._yamlError = undefined;
-    this._updateWidget(index, { ...this._config!.widgets[index], card: ev.detail.value });
+    this._updateWidget(index, { ...this._widgets[index], card: ev.detail.value });
   }
 
   private _add(type: WidgetType): void {
     const widget = { type, ...WIDGETS[type].defaults } as WidgetConfig;
-    const widgets = [...this._config!.widgets, widget];
+    const widgets = [...this._widgets, widget];
     this._adding = false;
     this._selected = widgets.length - 1;
-    this._commit({ ...this._config!, widgets });
+    this._setWidgets(widgets);
   }
 
   private _move(index: number, delta: number): void {
-    const widgets = [...this._config!.widgets];
+    const widgets = [...this._widgets];
     const target = index + delta;
     if (target < 0 || target >= widgets.length) return;
     [widgets[index], widgets[target]] = [widgets[target], widgets[index]];
-    this._commit({ ...this._config!, widgets });
+    this._setWidgets(widgets);
   }
 
   private _remove(index: number): void {
-    const widgets = this._config!.widgets.filter((_, i) => i !== index);
+    const widgets = this._widgets.filter((_, i) => i !== index);
     this._selected = undefined;
-    this._commit({ ...this._config!, widgets });
+    this._setWidgets(widgets);
   }
 
   private _duplicate(index: number): void {
-    const widgets = [...this._config!.widgets];
+    const widgets = [...this._widgets];
     widgets.splice(index + 1, 0, structuredClone(widgets[index]));
-    this._commit({ ...this._config!, widgets });
+    this._setWidgets(widgets);
+  }
+
+  private _addPage(): void {
+    const pages = this._config!.pages;
+    let id: string;
+    do {
+      id = `page-${Date.now().toString(36)}-${++nextPageId}`;
+    } while (pages?.some((page) => page.id === id));
+    if (!pages) {
+      const menu = this._config!.widgets.find((widget) => widget.type === "menu");
+      const page: DashboardPage = { id, name: "Home", widgets: menu ? this._config!.widgets : [...this._config!.widgets, { type: "menu" }] };
+      this._editingPageId = page.id;
+      this._expandedPageId = page.id;
+      const shared_menu = menu ? clean({ title: menu.title, direction: menu.direction, show_icons: menu.show_icons, font_size: menu.font_size }) : {};
+      this._commit({ ...this._config!, widgets: [], pages: [page], shared_menu });
+      window.dispatchEvent(new CustomEvent("yad-editor-page-selected", { detail: { page: page.id } }));
+      return;
+    }
+    const page: DashboardPage = { id, name: `Page ${pages.length + 1}`, widgets: [{ type: "menu" }] };
+    this._editingPageId = page.id;
+    this._expandedPageId = page.id;
+    this._adding = false;
+    this._commit({ ...this._config!, pages: [...pages, page] });
+    window.dispatchEvent(new CustomEvent("yad-editor-page-selected", { detail: { page: page.id } }));
+  }
+
+  private _editPage(id: string): void {
+    this._editingPageId = id;
+    this._adding = false;
+    window.dispatchEvent(new CustomEvent("yad-editor-page-selected", { detail: { page: id } }));
+  }
+
+  private _sharedMenuChanged(event: CustomEvent): void {
+    event.stopPropagation();
+    const { title, direction, show_icons, font_size } = event.detail.value;
+    this._commit({ ...this._config!, shared_menu: clean({ title, direction, show_icons, font_size }) });
+  }
+
+  private _pageChanged(event: CustomEvent, id: string): void {
+    event.stopPropagation();
+    const value = event.detail.value as DashboardPage;
+    const pages = this._config!.pages!.map((page) => page.id === id
+      ? { ...page, name: value.name ?? "", icon: value.icon || undefined, background_media: value.background_media || undefined }
+      : page);
+    this._commit({ ...this._config!, pages });
+  }
+
+  private _movePage(index: number, delta: number): void {
+    const pages = [...this._config!.pages!];
+    const target = index + delta;
+    if (target < 0 || target >= pages.length) return;
+    [pages[index], pages[target]] = [pages[target], pages[index]];
+    this._commit({ ...this._config!, pages });
+  }
+
+  private _removePage(id: string): void {
+    const pages = this._config!.pages!.filter((page) => page.id !== id);
+    if (!pages.length) return;
+    if (this._editingPageId === id) this._editingPageId = pages[0].id;
+    if (this._expandedPageId === id) this._expandedPageId = undefined;
+    this._removingPageId = undefined;
+    this._adding = false;
+    this._selected = undefined;
+    this._commit({ ...this._config!, pages });
+    window.dispatchEvent(new CustomEvent("yad-editor-page-selected", { detail: { page: this._editingPageId } }));
   }
 
   private _summary(w: WidgetConfig): string {
@@ -341,6 +445,48 @@ export class YadEditor extends LitElement {
         <p class="hint">Browse Home Assistant media or upload an image with the image picker. Alternatively enter an image URL. Selecting one replaces the other.</p>
       </div>
 
+      <details class="section pages-section" ?open=${this._pagesOpen} @toggle=${(event: Event) => (this._pagesOpen = (event.currentTarget as HTMLDetailsElement).open)}>
+        <summary class="section-title"><ha-icon icon="mdi:view-dashboard-outline"></ha-icon>Pages & menu</summary>
+        ${this._config.pages
+          ? html`
+              <p class="hint">Each page has its own widgets. Menu widgets show these pages in this order; names, icons and pictures are shared.</p>
+              <ha-form .hass=${this.hass}
+                .data=${{ direction: "vertical", show_icons: true, ...this._config.shared_menu }}
+                .schema=${WIDGETS.menu.schema.filter((field) => field.name !== "items")}
+                .computeLabel=${this._label} @value-changed=${this._sharedMenuChanged}></ha-form>
+              ${this._config.pages.map((page, index) => html`
+                <div class="page">
+                  <div class="row">
+                    <button class="page-toggle" aria-expanded=${page.id === this._expandedPageId ? "true" : "false"}
+                      @click=${() => { this._expandedPageId = this._expandedPageId === page.id ? undefined : page.id; this._removingPageId = undefined; }}>
+                      <ha-icon icon=${page.id === this._expandedPageId ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
+                      <span class="row-title">${page.name || "Unnamed page"}${page.id === this._editingPageId ? " · editing widgets" : ""}</span>
+                    </button>
+                    <button title="Move page up" ?disabled=${index === 0} @click=${() => this._movePage(index, -1)}><ha-icon icon="mdi:arrow-up"></ha-icon></button>
+                    <button title="Move page down" ?disabled=${index === this._config!.pages!.length - 1} @click=${() => this._movePage(index, 1)}><ha-icon icon="mdi:arrow-down"></ha-icon></button>
+                    <button title="Remove page" class="danger" ?disabled=${this._config!.pages!.length === 1} @click=${() => { this._expandedPageId = page.id; this._removingPageId = page.id; }}><ha-icon icon="mdi:delete-outline"></ha-icon></button>
+                  </div>
+                  ${page.id === this._expandedPageId ? html`
+                    <ha-form .hass=${this.hass} .data=${page} .schema=${PAGE_SCHEMA}
+                      .computeLabel=${(field: { name: string }) => ({ name: "Page name", icon: "Menu icon", background_media: "Menu button background image" }[field.name] ?? field.name)}
+                      @value-changed=${(event: CustomEvent) => this._pageChanged(event, page.id)}></ha-form>
+                    <button class="text-btn" @click=${() => this._editPage(page.id)}>Edit this page's widgets</button>
+                    ${this._removingPageId === page.id ? html`
+                      <p class="hint">Remove this page and all its widgets?</p>
+                      <button class="text-btn danger" @click=${() => this._removePage(page.id)}>Remove page</button>
+                      <button class="text-btn" @click=${() => (this._removingPageId = undefined)}>Cancel</button>
+                    ` : nothing}
+                  ` : nothing}
+                </details>
+              `)}
+              <button class="add" @click=${this._addPage}><ha-icon icon="mdi:plus"></ha-icon>Add page</button>
+            `
+          : html`
+              <p class="hint">Create internal pages with a shared menu. Your current widgets become the first page, and a menu is added if needed. Existing menu widgets will show the shared pages instead of their external links.</p>
+              <button class="add" @click=${this._addPage}><ha-icon icon="mdi:plus"></ha-icon>Set up pages</button>
+            `}
+      </div>
+
       <div class="section">
         <div class="section-title"><ha-icon icon="mdi:tune-variant"></ha-icon>Behaviour</div>
         <ha-form
@@ -353,9 +499,9 @@ export class YadEditor extends LitElement {
       </div>
 
       <div class="section">
-        <div class="section-title"><ha-icon icon="mdi:view-grid-outline"></ha-icon>Widgets</div>
+        <div class="section-title"><ha-icon icon="mdi:view-grid-outline"></ha-icon>Widgets${this._config.pages ? ` · ${this._config.pages.find((page) => page.id === this._editingPageId)?.name || "Unnamed page"}` : ""}</div>
         <div class="list">
-          ${this._config.widgets.map((w, i) => {
+          ${this._widgets.map((w, i) => {
             const def = WIDGETS[w.type];
             return html`<div class="row">
               <ha-icon class="type-icon" icon=${def?.icon ?? "mdi:help-circle-outline"}></ha-icon>
@@ -364,7 +510,7 @@ export class YadEditor extends LitElement {
                 <div class="row-sub">${this._summary(w)}</div>
               </div>
               <button title="Move up" ?disabled=${i === 0} @click=${() => this._move(i, -1)}><ha-icon icon="mdi:arrow-up"></ha-icon></button>
-              <button title="Move down" ?disabled=${i === this._config!.widgets.length - 1} @click=${() => this._move(i, 1)}>
+              <button title="Move down" ?disabled=${i === this._widgets.length - 1} @click=${() => this._move(i, 1)}>
                 <ha-icon icon="mdi:arrow-down"></ha-icon>
               </button>
               <button title="Duplicate" @click=${() => this._duplicate(i)}><ha-icon icon="mdi:content-copy"></ha-icon></button>
@@ -392,12 +538,12 @@ export class YadEditor extends LitElement {
   }
 
   private _renderWidgetEditor(index: number) {
-    const w = this._config!.widgets[index];
+    const w = this._widgets[index];
     const def = WIDGETS[w.type];
     const data = { ...def?.defaults, ...w };
     // The entity picker only handles plain IDs; keep richer `{ entity, color, ... }` lists YAML-only.
     const richEntities = Array.isArray(w.entities) && w.entities.some((e: unknown) => typeof e !== "string");
-    const schema = richEntities ? def?.schema.filter((s) => s.name !== "entities") ?? [] : def?.schema ?? [];
+    const schema = this._config!.pages && w.type === "menu" ? [] : (def?.schema ?? []).filter((s) => !(richEntities && s.name === "entities"));
     return html`
       <div class="editor-head">
         <button @click=${() => (this._selected = undefined)} title="Back"><ha-icon icon="mdi:arrow-left"></ha-icon></button>
@@ -407,6 +553,7 @@ export class YadEditor extends LitElement {
       ${richEntities
         ? html`<p class="hint">This widget's entities use custom names/colours/icons — edit them in the code editor (Show code editor).</p>`
         : nothing}
+      ${this._config!.pages && w.type === "menu" ? html`<p class="hint">Menu buttons are configured in Pages & menu.</p>` : nothing}
       ${schema.length
         ? html`<div class="section">
             <ha-form
@@ -473,6 +620,19 @@ export class YadEditor extends LitElement {
       flex-direction: column;
       gap: 6px;
     }
+    .page { padding: 10px 0; border-bottom: 1px solid var(--divider-color); }
+    button.page-toggle {
+      flex: 1;
+      min-width: 0;
+      width: auto;
+      height: auto;
+      justify-content: flex-start;
+      gap: 6px;
+      border-radius: 6px;
+      color: var(--primary-text-color);
+      text-align: left;
+    }
+    .page-toggle .row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row {
       display: flex;
       align-items: center;

@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test-bundle.mjs",
     "demo": "rollup -c --environment DEMO",
-    "version": "node scripts/sync-version.mjs && npm run build && git add src/version.ts CHANGELOG.md dist",
+    "version": "node scripts/sync-version.mjs && npm run build && git add src/version.ts CHANGELOG.md dist/yad.js",
     "postversion": "git push --follow-tags"
   },
   "repository": {

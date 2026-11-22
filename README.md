@@ -25,7 +25,7 @@ One card, in a **panel view**, renders a full-screen grid of widgets that you co
 | `toggles` | Lights & switches (also fans, scenes, scripts, covers, locks, buttons) |
 | `sensors` | Any sensors as tiles or a list |
 | `media` | Now playing with artwork and transport controls |
-| `menu` | Buttons that jump to other YAD dashboards, with the current one subtly highlighted |
+| `menu` | Shared internal-page navigation or buttons that jump to other dashboards |
 | `car` | Vehicle charge/fuel, range, location, EV connection/charging and optional extra sensors |
 | `spacer` | Quarter-row blank space, horizontal line or dashed divider |
 | `card` | **Any existing Home Assistant card** (built-in or custom) embedded as a widget |
@@ -98,15 +98,50 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | `screen` | `fill` | `fill` uses the available space, or lay out for a fixed resolution: `720p`, `1080p`, `1440p`, `4k`, `wsvga` (1024×600), `wxga` (1280×800), `wuxga` (1920×1200), `ipad` (2048×1536), or `custom` — see [Screen sizes](#screen-sizes) |
 | `screen_width` / `screen_height` | – | Resolution in px when `screen: custom` |
 | `ui_scale` | `auto` | UI scale for fixed screens, like OS display scaling (`1`, `1.5`, `2`…) |
-| `columns` | `4` | Grid columns in landscape |
-| `portrait_columns` | `2` | Grid columns in portrait |
+| `columns` | `4` | Grid columns in landscape (visual editor: 1–16) |
+| `portrait_columns` | `2` | Grid columns in portrait (visual editor: 1–32) |
 | `height` | `screen` | When `screen: fill`: `screen` fills the viewport with rows sized to fit; `auto` uses fixed `row_height` rows; or any CSS height |
-| `row_height` | `180` | Row height in px when `height: auto`, or when `fill_from_top` is on |
+| `row_height` | `90` | Row height in px when `height: auto`, or when `fill_from_top` is on |
 | `fill_from_top` | `false` | On fill and fixed-screen layouts, keep rows at `row_height` and stack cards from the top instead of stretching them to the screen height. The screen's aspect ratio and scaling are unchanged |
-| `gap` | `16` | Spacing between tiles in px |
+| `gap` | `8` | Spacing between tiles in px |
 | `display_only` | `false` | Disable all touch/clicks and hide controls — a pure information display |
 | `hide_cursor` | `false` | Hide the mouse cursor (useful for kiosk PCs) |
 | `widgets` | – | List of widgets (below) |
+| `pages` | – | Optional internal pages, each with its own `widgets` list; replaces the top-level widget list when present |
+| `shared_menu` | – | Menu appearance shared by internal pages |
+
+### Internal pages
+
+Expand **Pages & menu → Set up pages** in the card editor to keep several pages in one YAD card. Existing widgets become the first page, and a menu widget is added if there isn't one already. Expand a page to configure its name, icon and button picture; only one page's settings are open at a time. Configure the shared menu's appearance there, and use **Edit this page's widgets** to choose which widget list to edit. New pages start with a menu widget that you can position like any other widget.
+
+Menu buttons switch between pages within the same Home Assistant view. The selected page is stored in the `yad-page` URL parameter, so links, reloads and browser back/forward work; other query parameters such as `kiosk` are retained. The first page is the default. Screen, theme and background settings are shared across pages.
+
+Existing single-page cards and their external-link menus are unchanged until pages are enabled. In page mode, every menu widget shows the shared pages instead of its old external links. Widgets from other existing cards are not imported automatically; recreate them in the appropriate page before retiring those cards.
+
+For YAML users, the equivalent structure is:
+
+```yaml
+type: custom:yad-card
+shared_menu:
+  direction: horizontal
+  show_icons: true
+pages:
+  - id: home
+    name: Home
+    icon: mdi:home
+    widgets:
+      - type: menu
+      - type: clock
+  - id: kitchen
+    name: Kitchen
+    icon: mdi:stove
+    widgets:
+      - type: menu
+      - type: sensors
+        entities: [sensor.kitchen_temperature]
+```
+
+Each page needs a unique, stable `id` and its own widget list. In page mode, edit menu title, direction, icon visibility and text size in `shared_menu`; menu widgets only control their placement. Keep a menu on each page you want to navigate away from.
 
 ### Options shared by every widget
 
@@ -114,8 +149,8 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | --- | --- |
 | `type` | Widget type (see table above) |
 | `title` | Optional title for the widget |
-| `col_span` / `row_span` | Size in grid cells (landscape) |
-| `portrait_col_span` / `portrait_row_span` | Size override for portrait |
+| `col_span` / `row_span` | Size in grid cells (landscape); the editor allows up to 12 columns and 32 rows |
+| `portrait_col_span` / `portrait_row_span` | Size override for portrait; the editor allows up to 12 columns and 32 rows |
 | `visibility` | `all` (default), `landscape` or `portrait` |
 | `transparent` | Render without the tile background (default for `clock`) |
 | `auto_height` | `false` by default. Shrink this widget's grid space to its content, in quarter rows up to its `row_span`; widgets below move up, and on fill/fixed screens widgets without automatic height grow to use the freed space. Ignored for spacers |
@@ -127,7 +162,7 @@ Widgets are packed into the grid in order, filling gaps automatically.
 
 Open a widget's **Size & placement** and enable **Automatic height** to remove unused space inside that tile. Set **Maximum automatic height** to limit long calendars, sensor lists or embedded cards. Leave automatic height off on widgets you want stretched to their assigned grid area.
 
-Screen size, scaling, orientation and fill-screen options always remain available. Automatic height changes only the selected tile's visible height: its row/column placement and other widgets' positions remain unchanged. Content is limited to the smaller of the configured height limit and the assigned grid area. Increase `row_span` if you need more room. Spacers keep their explicit quarter-row size.
+Screen size, scaling, orientation and fill-screen options always remain available. Automatic height shrinks the selected widget's grid space, so widgets below can move up as the grid repacks. Content is limited to the smaller of the configured height limit and the assigned grid area. Increase `row_span` if you need more room. Spacers keep their explicit quarter-row size.
 
 The dashboard-wide Compact layout introduced in v0.5.0 has been removed. Saved `layout_mode` values are ignored and removed when editing; existing per-widget `auto_height` values now apply within the normal grid.
 
@@ -158,7 +193,7 @@ widgets:
 
 **weather** — `entity` (required), `forecast_type` (`daily`, `hourly`, `twice_daily`), `forecast_count` (5), `show_details` (true).
 
-**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Set `day_position` to `top` (default), `left`, or `right` to position the day/date heading relative to its events. Set `time_position` to `below` (default) or `right` to move event times to the right of each row; locations remain under the event name when enabled. Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
+**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Set `day_position` to `top` (default), `left`, or `right` to position the day/date heading relative to its events. Set `time_position` to `below` (default) or `right` to move event times to the right of each row; locations remain under the event name when enabled. Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. If a calendar fails or takes over 15 seconds, the others still load, a warning is shown, and same-day cached events for the failed calendar are retained when available. Failed calendars are retried after a two-minute backoff; a timed-out request cannot be cancelled, so the same page will not issue another for that calendar until it settles. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
 
 **energy** — `power_entity` (current consumption in W or kW), `today_entity`, `solar_power_entity`, `solar_today_entity`, `battery_entity`, `cost_entity`, `show_graph` (true), `hours_to_show` (24). All optional — show only what you have.
 
@@ -170,13 +205,13 @@ widgets:
 
 **media** — `entity` (required), `name`, `show_volume` (false).
 
-**menu** — `items` (list of `name`, `path` such as `/yad-kitchen/0`, optional `icon`), `direction` (`vertical` or `horizontal`), `show_icons` (true), `font_size` (text size in px, default 16; icons scale with it), `title`. The button matching the current dashboard is highlighted; query flags like `?kiosk` are kept when navigating.
+**menu** — Without internal pages, `items` is a list of `name`, `path` such as `/yad-kitchen/0`, optional `icon` and `background_media`; `direction` (`vertical` or `horizontal`), `show_icons` (true), `font_size` (text size in px, default 16; icons scale with it) and `title` control its appearance. With internal pages, configure the buttons and appearance once in **Pages & menu**, and place a menu widget on each page. Use **Background image** to browse HA media or upload a picture. In YAML, `background_media` holds the picker value, e.g. `{ media_content_id: "media-source://media_source/local/kitchen.jpg", media_content_type: "image/jpeg" }`. Images fill the button with a dark overlay to keep its label readable; image errors are shown on the button. The current page is highlighted; query flags like `?kiosk` are kept when navigating.
 
 **card** — `card`: any Lovelace card configuration.
 
 **car** — `title`, `charge_entity` and `fuel_entity` (percentage sensors), `range_entity` (sensor), `location_entity` (device tracker), `plugged_in_entity` and `charging_entity` (binary sensors or sensors). Add extra vehicle data with `entities` (strings or `{ entity, name, icon }`). Each field is optional; unconfigured, missing, unknown and unavailable entities are omitted, but valid zero values and off states remain visible. Tap a reading for more info unless display-only mode is enabled.
 
-**spacer** — `style` (`blank`, `line`, `dashed`), optional `line_color`, `row_span` (0.25 by default; 0.25, 0.5, 0.75 or 1), and `portrait_row_span` with the same choices. The default is transparent and full-width (up to four columns). Other widgets keep whole-row heights. A spacer switches the visible grid to quarter-row tracks: four tracks **including their internal spacing** equal a normal row. With `height: auto`, `row_height: 180` and `gap: 0`, a quarter spacer is 45px; with the default 16px gap it is 33px and a normal row stays 180px. Extremely large vertical gaps are reduced if needed to keep quarter tracks positive. Filled-screen and fixed-screen modes scale tracks to the available height. Dense packing still applies; use a spacer spanning all your columns to reserve a whole horizontal strip.
+**spacer** — `style` (`blank`, `line`, `dashed`), optional `line_color`, `row_span` (0.25 by default; 0.25, 0.5, 0.75 or 1), and `portrait_row_span` with the same choices. The default is transparent and full-width (up to four columns). Other widgets keep whole-row heights. A spacer switches the visible grid to quarter-row tracks: four tracks **including their internal spacing** equal a normal row. With `height: auto`, `row_height: 180` and `gap: 0`, a quarter spacer is 45px; with the default 8px gap it is 39px and a normal row stays 180px. Extremely large vertical gaps are reduced if needed to keep quarter tracks positive. Filled-screen and fixed-screen modes scale tracks to the available height. Dense packing still applies; use a spacer spanning all your columns to reserve a whole horizontal strip.
 
 ### Background images
 
@@ -328,7 +363,7 @@ YAD is a **Dashboard/plugin**, not a backend integration; Hassfest and integrati
 
 ### Releasing a new version
 
-1. As you work, add entries under **Unreleased** in [CHANGELOG.md](CHANGELOG.md).
+1. As you work, add entries under **Unreleased** in [CHANGELOG.md](CHANGELOG.md). Commit all intended source, documentation and bundle changes before releasing.
 2. Cut the release in one of two ways:
    - **From your PC:** `npm version patch` (bug fixes), `npm version minor` (new features) or `npm version major` (breaking changes). This bumps `package.json`, syncs `src/version.ts`, moves the Unreleased notes under the new version, rebuilds `dist`, commits "Release vX.Y.Z", tags it and pushes.
    - **From GitHub:** **Actions → Release → Run workflow**, pick the bump type and run it. The workflow does the same steps.

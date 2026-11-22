@@ -8,6 +8,11 @@ export interface HassEntity {
   last_updated: string;
 }
 
+export interface MediaSource {
+  media_content_id: string;
+  media_content_type?: string;
+}
+
 export interface HomeAssistant {
   states: Record<string, HassEntity>;
   language: string;
@@ -57,6 +62,21 @@ export interface WidgetConfig {
   [key: string]: any;
 }
 
+export interface DashboardPage {
+  id: string;
+  name: string;
+  icon?: string;
+  background_media?: MediaSource;
+  widgets: WidgetConfig[];
+}
+
+export interface SharedMenuConfig {
+  title?: string;
+  direction?: "vertical" | "horizontal";
+  show_icons?: boolean;
+  font_size?: number;
+}
+
 export interface DashboardConfig {
   type: string;
   /** Light/dark mode, or "ha" to use the active Home Assistant theme. */
@@ -66,7 +86,7 @@ export interface DashboardConfig {
   custom_palette?: CustomPalette;
   accent_color?: string;
   background?: string;
-  background_media?: { media_content_id: string; media_content_type?: string };
+  background_media?: MediaSource;
   /** Image opacity as a percentage, without fading widgets. */
   background_opacity?: number;
   background_blur?: number;
@@ -90,6 +110,8 @@ export interface DashboardConfig {
   display_only?: boolean;
   hide_cursor?: boolean;
   widgets: WidgetConfig[];
+  pages?: DashboardPage[];
+  shared_menu?: SharedMenuConfig;
 }
 
 declare global {
