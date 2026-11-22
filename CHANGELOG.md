@@ -7,6 +7,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-22
+
 ### Added
 
 - Optional internal pages with separate widget lists and one shared, visually configured menu, including page links and browser history.
@@ -129,7 +131,8 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 - Light, dark and Home Assistant theme modes with an accent colour override.
 - Visual editor for adding, ordering and configuring widgets.
 
-[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/therealcarnivor/YAD-Dashboard/compare/v0.5.0...v0.5.1
