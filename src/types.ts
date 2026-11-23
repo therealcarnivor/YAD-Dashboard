@@ -112,6 +112,8 @@ export interface DashboardConfig {
   widgets: WidgetConfig[];
   pages?: DashboardPage[];
   shared_menu?: SharedMenuConfig;
+  /** Minutes on a non-home page before returning to the first page; 0 disables it. */
+  return_home_minutes?: number;
 }
 
 declare global {

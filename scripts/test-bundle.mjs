@@ -289,6 +289,9 @@ try {
     localStorage.clear();
 
     const realSetTimeout = window.setTimeout;
+    const realWarn = console.warn;
+    const calendarWarnings = [];
+    console.warn = (...args) => { calendarWarnings.push(args); };
     window.setTimeout = (callback, delay, ...args) => realSetTimeout(callback, delay === 15000 ? 20 : delay, ...args);
     try {
       let stalled = false;
@@ -321,7 +324,7 @@ try {
       await partial._fetch();
       await settle(partial);
       check(partial.shadowRoot.textContent.includes("Good calendar event") && partial.shadowRoot.textContent.includes("Slow calendar event"), "A timed-out calendar must not hide working or cached events");
-      check(partial.shadowRoot.querySelector('[role="alert"]')?.textContent.includes("calendar.slow: request timed out"), "A calendar timeout must be visible");
+      check(!partial.shadowRoot.textContent.includes("request timed out") && !partial.shadowRoot.querySelector('[role="alert"]'), "A calendar timeout must not be shown on the dashboard");
       expire();
       await partial._fetch();
       check(slowCalls === 2 && goodCalls === 2, "Retrying a failure must not duplicate a pending request or refetch a fresh calendar");
@@ -343,8 +346,16 @@ try {
       } };
       document.body.append(failed);
       await settle(failed);
-      check(failed.shadowRoot.textContent.includes("Available event") && failed.shadowRoot.querySelector('[role="alert"]')?.textContent.includes("Access denied"), "A rejected calendar must not block other calendars");
+      check(failed.shadowRoot.textContent.includes("Available event") && !failed.shadowRoot.textContent.includes("Access denied") && !failed.shadowRoot.querySelector('[role="alert"]'), "A rejected calendar must not block other calendars or show an error");
+      check(calendarWarnings.some(([message, error]) => message.includes("calendar.bad") && error.message === "Access denied"), "Calendar failures must be logged to the browser console");
       failed.remove();
+      const partialReload = document.createElement("yad-widget-calendar");
+      partialReload.config = failed.config;
+      partialReload.hass = failed.hass;
+      document.body.append(partialReload);
+      await settle(partialReload);
+      check(partialReload.shadowRoot.textContent.includes("Available event") && !partialReload.shadowRoot.textContent.includes("Access denied") && !partialReload.shadowRoot.querySelector('[role="alert"]'), "Cached partial failures must not show errors");
+      partialReload.remove();
       localStorage.clear();
 
       const allFailed = document.createElement("yad-widget-calendar");
@@ -352,14 +363,22 @@ try {
       allFailed.hass = { ...hass, callApi: async () => { throw new Error("Access denied"); } };
       document.body.append(allFailed);
       await settle(allFailed);
-      check(allFailed.shadowRoot.textContent.includes("Access denied"), "Complete calendar failures must be visible");
+      check(allFailed.shadowRoot.textContent.includes("No calendar events available") && !allFailed.shadowRoot.textContent.includes("Access denied"), "Complete calendar failures must show a neutral message");
       allFailed.remove();
       const failedReload = document.createElement("yad-widget-calendar");
       failedReload.config = allFailed.config;
       failedReload.hass = allFailed.hass;
       document.body.append(failedReload);
       await settle(failedReload);
-      check(failedReload.shadowRoot.textContent.includes("Access denied") && !failedReload.shadowRoot.textContent.includes("Loading"), "A cached failure must remain visible after reload");
+      check(failedReload.shadowRoot.textContent.includes("No calendar events available") && !failedReload.shadowRoot.textContent.includes("Access denied") && !failedReload.shadowRoot.textContent.includes("Loading"), "A cached failure must show a neutral message after reload");
+      const failedCacheKey = Object.keys(localStorage).find((key) => key.startsWith("yad-calendar:"));
+      const failedCache = JSON.parse(localStorage.getItem(failedCacheKey));
+      failedCache.failedAt = 0;
+      localStorage.setItem(failedCacheKey, JSON.stringify(failedCache));
+      failedReload.hass = { ...hass, callApi: async () => [event("Recovered event", monday)] };
+      await failedReload._fetch();
+      await settle(failedReload);
+      check(failedReload.shadowRoot.textContent.includes("Recovered event") && !failedReload.shadowRoot.textContent.includes("No calendar events available"), "A recovered calendar must show its events");
       failedReload.remove();
       localStorage.clear();
 
@@ -381,6 +400,7 @@ try {
       localStorage.clear();
     } finally {
       window.setTimeout = realSetTimeout;
+      console.warn = realWarn;
     }
 
     const menuCalls = [];
@@ -525,6 +545,10 @@ try {
     const sharedMenuForm = [...pagesEditor.shadowRoot.querySelectorAll("ha-form")].find((form) => form.schema.some((field) => field.schema?.some((child) => child.name === "direction")));
     sharedMenuForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...sharedMenuForm.data, direction: "vertical", show_icons: false } } }));
     check(pagesConfig.shared_menu.direction === "vertical" && pagesConfig.shared_menu.show_icons === false, "Shared menu appearance must be editable once");
+    const timerForm = [...pagesEditor.shadowRoot.querySelectorAll("ha-form")].find((form) => form.schema.some((field) => field.name === "return_home_minutes"));
+    check(timerForm.data.return_home_minutes === 0, "Home timer must default to disabled");
+    timerForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { return_home_minutes: 5 } } }));
+    check(pagesConfig.return_home_minutes === 5 && pagesConfig.shared_menu.direction === "vertical", "Home timer must be saved without changing the menu");
     [...pagesEditor.shadowRoot.querySelectorAll("button")].find((button) => button.textContent.includes("Add widget")).click();
     await settle(pagesEditor);
     [...pagesEditor.shadowRoot.querySelectorAll("button.pick")].find((button) => button.textContent.includes("Sensors")).click();
@@ -556,7 +580,7 @@ try {
     check(currentSection.open && pagesEditor.shadowRoot.querySelectorAll(".page-toggle")[1].getAttribute("aria-expanded") === "true", "Reopening the section must retain the expanded page");
     const generalForm = pagesEditor.shadowRoot.querySelector("ha-form");
     generalForm.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...generalForm.data, columns: 5 } } }));
-    check(pagesConfig.pages.length === 2 && pagesConfig.columns === 5, "General settings must preserve pages");
+    check(pagesConfig.pages.length === 2 && pagesConfig.columns === 5 && pagesConfig.return_home_minutes === 5, "General settings must preserve pages and the home timer");
     await settle(pagesEditor);
     pagesEditor.shadowRoot.querySelector('.page button[title="Remove page"]').click();
     await settle(pagesEditor);
@@ -642,6 +666,75 @@ try {
     await settle(previewCard);
     check(previewCard.shadowRoot.querySelector("yad-widget-clock") && location.href === previewUrl, "Preview menu navigation must not change the dashboard URL");
     previewCard.remove();
+
+    const nativeSetTimeout = window.setTimeout;
+    const nativeClearTimeout = window.clearTimeout;
+    const timers = new Map();
+    let timerId = -1;
+    window.setTimeout = (callback, delay, ...args) => {
+      if (delay === 60_000 || delay === 120_000) {
+        const id = timerId--;
+        timers.set(id, { callback, delay, args });
+        return id;
+      }
+      return nativeSetTimeout(callback, delay, ...args);
+    };
+    window.clearTimeout = (id) => {
+      if (id < 0) timers.delete(id);
+      else nativeClearTimeout(id);
+    };
+    try {
+      history.replaceState(null, "", "/?kiosk&yad-page=kitchen#dashboard");
+      const timedCard = document.createElement("yad-card");
+      timedCard.hass = hass;
+      timedCard.setConfig({ ...pageConfig, return_home_minutes: 1 });
+      document.body.append(timedCard);
+      await settle(timedCard);
+      check(timers.size === 1 && [...timers.values()][0].delay === 60_000, "A linked non-home page must start the configured minute timer");
+      timedCard.setConfig({ ...pageConfig, return_home_minutes: 1, gap: 12 });
+      check(timers.size === 1 && timers.has(-1), "Unrelated configuration updates must not restart the timer");
+      timedCard.setConfig({ ...pageConfig, return_home_minutes: 2 });
+      check(timers.size === 1 && [...timers.values()][0].delay === 120_000, "Changing the duration must replace the timer");
+      timedCard.setConfig({ ...pageConfig, return_home_minutes: 0 });
+      check(timers.size === 0, "Setting the timer to zero must cancel it");
+      const threePages = { ...pageConfig, pages: [...pageConfig.pages, { id: "office", name: "Office", widgets: [{ type: "menu" }] }], return_home_minutes: 1 };
+      timedCard.setConfig(threePages);
+      const previousTimer = [...timers.keys()][0];
+      history.replaceState(null, "", "/?kiosk&yad-page=office#dashboard");
+      window.dispatchEvent(new CustomEvent("location-changed"));
+      check(timers.size === 1 && !timers.has(previousTimer), "Switching between non-home pages must restart the timer");
+      history.replaceState(null, "", "/?kiosk&yad-page=home#dashboard");
+      window.dispatchEvent(new CustomEvent("location-changed"));
+      check(timers.size === 0, "Navigating home manually must cancel the timer");
+      history.replaceState(null, "", "/?kiosk&yad-page=kitchen#dashboard");
+      window.dispatchEvent(new CustomEvent("location-changed"));
+      const homeTimer = [...timers.values()][0];
+      timers.clear();
+      homeTimer.callback(...homeTimer.args);
+      await settle(timedCard);
+      const returnedUrl = new URL(location.href);
+      check(timedCard.shadowRoot.querySelector("yad-widget-clock") && returnedUrl.searchParams.has("kiosk") && !returnedUrl.searchParams.has("yad-page") && location.hash === "#dashboard", "Timer must return home and preserve other URL parameters and hash");
+      check(timers.size === 0, "No timer should run on the home page");
+      history.replaceState(null, "", "/?kiosk&yad-page=kitchen#dashboard");
+      window.dispatchEvent(new CustomEvent("location-changed"));
+      check(timers.size === 1, "Navigating away from home must start a timer");
+      timedCard.remove();
+      check(timers.size === 0, "Disconnecting the card must cancel the timer");
+      document.body.append(timedCard);
+      check(timers.size === 1, "Reconnecting on a non-home page must restart the timer");
+      timedCard.preview = true;
+      await settle(timedCard);
+      check(timers.size === 0, "Editor previews must not run the timer");
+      timedCard.remove();
+      for (const invalid of [-1, 0.5, 35792]) {
+        let rejected = false;
+        try { timedCard.setConfig({ ...pageConfig, return_home_minutes: invalid }); } catch { rejected = true; }
+        check(rejected, "Invalid home timer values must be rejected");
+      }
+    } finally {
+      window.setTimeout = nativeSetTimeout;
+      window.clearTimeout = nativeClearTimeout;
+    }
     history.replaceState(null, "", originalUrl);
     window.dispatchEvent(new CustomEvent("location-changed"));
     return ["background controls and failures", "quarter-row geometry", "vehicle data and actions", "calendar weekends, badges and layouts", "menu button images", "internal pages and editor", "editor media/upload and collapsed palettes"];

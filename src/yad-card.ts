@@ -48,6 +48,8 @@ export class YadCard extends LitElement {
   private _backgroundKey?: string;
   private _backgroundRequest = 0;
   private _backgroundTimer?: number;
+  private _homeTimer?: number;
+  private _homeTimerKey?: string;
   private _mql = window.matchMedia("(orientation: portrait)");
   private _onOrientation = (e: MediaQueryListEvent) => (this._portraitMedia = e.matches);
   private _resizeObserver = new ResizeObserver(() => this._measure());
@@ -104,6 +106,9 @@ export class YadCard extends LitElement {
     if (config.pages !== undefined && (!Array.isArray(config.pages) || !config.pages.length)) {
       throw new Error("`pages` must be a non-empty list");
     }
+    if (config.return_home_minutes !== undefined && (!Number.isInteger(config.return_home_minutes) || config.return_home_minutes < 0 || config.return_home_minutes > 35791)) {
+      throw new Error("Return to home page timer must be a whole number between 0 and 35791 minutes");
+    }
     const ids = new Set<string>();
     for (const page of config.pages ?? []) {
       if (!page || typeof page.id !== "string" || !page.id || typeof page.name !== "string" || !Array.isArray(page.widgets)) {
@@ -133,6 +138,7 @@ export class YadCard extends LitElement {
     // Retire v0.5's dashboard-wide compact setting without breaking saved configurations.
     Reflect.deleteProperty(next, "layout_mode");
     this._config = next;
+    this._syncHomeTimer();
     this._autoSpans = {};
     this._packedTrack = undefined;
     this._fitPasses = 0;
@@ -156,6 +162,7 @@ export class YadCard extends LitElement {
     window.addEventListener("popstate", this._onLocation);
     window.addEventListener("yad-editor-page-selected", this._onEditorPage);
     this._onLocation();
+    this._syncHomeTimer();
     this.requestUpdate();
   }
 
@@ -171,11 +178,15 @@ export class YadCard extends LitElement {
     window.removeEventListener("popstate", this._onLocation);
     window.removeEventListener("yad-editor-page-selected", this._onEditorPage);
     window.clearTimeout(this._backgroundTimer);
+    window.clearTimeout(this._homeTimer);
+    this._homeTimer = undefined;
+    this._homeTimerKey = undefined;
     this._backgroundRequest++;
     this._backgroundKey = undefined;
   }
 
-  protected updated(): void {
+  protected updated(changed: PropertyValues): void {
+    if (changed.has("preview")) this._syncHomeTimer();
     this._autoObserver.disconnect();
     const grid = this.renderRoot.querySelector<HTMLElement>(".grid");
     const autoTiles = this.renderRoot.querySelectorAll<HTMLElement>(".tile.auto-height");
@@ -307,9 +318,32 @@ export class YadCard extends LitElement {
   private _selectPage(id: string): void {
     if (id === this._pageId) return;
     this._pageId = id;
+    this._syncHomeTimer();
     this._autoSpans = {};
     this._packedTrack = undefined;
     this._fitPasses = 0;
+  }
+
+  private _syncHomeTimer(): void {
+    const pages = this._config?.pages;
+    const minutes = this._config?.return_home_minutes ?? 0;
+    const home = pages?.[0]?.id;
+    const enabled = this.isConnected && !this.preview && minutes > 0 && home
+      && this._pageId !== home && pages?.some((page) => page.id === this._pageId);
+    const key = enabled ? JSON.stringify([this._pageId, home, minutes]) : undefined;
+    if (key === this._homeTimerKey) return;
+    window.clearTimeout(this._homeTimer);
+    this._homeTimer = undefined;
+    this._homeTimerKey = key;
+    if (!key) return;
+    this._homeTimer = window.setTimeout(() => {
+      this._homeTimer = undefined;
+      this._homeTimerKey = undefined;
+      const url = new URL(window.location.href);
+      url.searchParams.delete("yad-page");
+      window.history.replaceState(null, "", url);
+      window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: true } }));
+    }, minutes * 60_000);
   }
 
   private _navigatePage = (event: CustomEvent<{ page: string }>): void => {

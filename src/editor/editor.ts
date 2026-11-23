@@ -109,6 +109,7 @@ const GENERAL_LABELS: Record<string, string> = {
   background_position: "Image position",
   display_only: "Display only (no touch)",
   hide_cursor: "Hide mouse cursor",
+  return_home_minutes: "Return to home page after",
 };
 
 const CUSTOM_FIELDS: [keyof PaletteColors, string][] = [
@@ -454,6 +455,10 @@ export class YadEditor extends LitElement {
                 .data=${{ direction: "vertical", show_icons: true, ...this._config.shared_menu }}
                 .schema=${WIDGETS.menu.schema.filter((field) => field.name !== "items")}
                 .computeLabel=${this._label} @value-changed=${this._sharedMenuChanged}></ha-form>
+              <ha-form .hass=${this.hass} .data=${{ return_home_minutes: this._config.return_home_minutes ?? 0 }}
+                .schema=${[number("return_home_minutes", 0, 35791, "min")]} .computeLabel=${this._label}
+                @value-changed=${(event: CustomEvent) => { event.stopPropagation(); this._set({ return_home_minutes: event.detail.value.return_home_minutes }); }}></ha-form>
+              <p class="hint">Return to the first page after this many minutes on another page. Set to 0 to disable; switching pages restarts the timer.</p>
               ${this._config.pages.map((page, index) => html`
                 <div class="page">
                   <div class="row">

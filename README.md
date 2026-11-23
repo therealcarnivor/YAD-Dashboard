@@ -4,10 +4,14 @@ A warm, modern, **modular widget dashboard** for Home Assistant — built for wa
 
 One card, in a **panel view**, renders a full-screen grid of widgets that you configure from the visual editor or YAML. It fills the screen (perfect with `?kiosk`), adapts to **portrait or landscape**, and can run as a **display-only** screen with touch disabled.
 
+**Use one Home Assistant view for your YAD dashboard, with the view type set to Panel (single card).** For multiple pages, create YAD's internal pages inside that one card instead of adding Home Assistant views. An optional timer can automatically return to the first (home) page.
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 [![GitHub release](https://img.shields.io/github/v/release/therealcarnivor/YAD-Dashboard)](https://github.com/therealcarnivor/YAD-Dashboard/releases)
 
-![YAD in landscape with the Hearth light palette](https://raw.githubusercontent.com/therealcarnivor/YAD-Dashboard/main/docs/images/landscape-light.png)
+![YAD home page in landscape with the Home menu button selected](https://raw.githubusercontent.com/therealcarnivor/YAD-Dashboard/main/docs/images/landscape-light.png)
+
+The shared menu switches between YAD pages inside one Panel view. The highlighted button shows the current page; each page can have its own widgets. The examples below use demo data.
 
 | Midnight indigo, dark mode | Coastal palette, portrait |
 | --- | --- |
@@ -71,10 +75,11 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 ## Setting up the dashboard
 
 1. **Settings → Dashboards → Add dashboard** → *New dashboard from scratch*.
-2. Open it, choose **Edit dashboard**, then edit the view and set **View type** to **Panel (single card)**.
-3. Add a card and pick **YAD – Yet Another Dashboard** (or use a *Manual* card with `type: custom:yad-card`).
-4. Configure the look and add widgets in the visual editor.
-5. Open the dashboard with `?kiosk` on the URL (e.g. `/dashboard-home/0?kiosk`) for a full-screen display. YAD fills the viewport by default (`height: screen`).
+2. Open it, choose **Edit dashboard**, then edit its **one view** and set **View type** to **Panel (single card)**.
+3. Add the single card and pick **YAD – Yet Another Dashboard** (or use a *Manual* card with `type: custom:yad-card`).
+4. Configure the look and widgets in the visual editor. For more than one page, use **Pages & menu → Set up pages** inside YAD, not additional Home Assistant views.
+5. Optionally set **Return to home page after** in **Pages & menu** to return to the first page after a number of minutes. `0` disables the timer.
+6. Open the dashboard with `?kiosk` on the URL (e.g. `/dashboard-home/0?kiosk`) for a full-screen display. YAD fills the viewport by default (`height: screen`).
 
 > `?kiosk` requires a kiosk add-on such as [kiosk-mode](https://github.com/NemesisRE/kiosk-mode). Without kiosk mode, set `height: calc(100vh - 56px)` so the grid accounts for the HA header.
 
@@ -109,12 +114,19 @@ Copy `dist/yad.js` to `<config>/www/yad.js` and add `/local/yad.js` as a **JavaS
 | `widgets` | – | List of widgets (below) |
 | `pages` | – | Optional internal pages, each with its own `widgets` list; replaces the top-level widget list when present |
 | `shared_menu` | – | Menu appearance shared by internal pages |
+| `return_home_minutes` | `0` | Whole minutes before returning to the first internal page; `0` disables the timer |
 
 ### Internal pages
 
 Expand **Pages & menu → Set up pages** in the card editor to keep several pages in one YAD card. Existing widgets become the first page, and a menu widget is added if there isn't one already. Expand a page to configure its name, icon and button picture; only one page's settings are open at a time. Configure the shared menu's appearance there, and use **Edit this page's widgets** to choose which widget list to edit. New pages start with a menu widget that you can position like any other widget.
 
-Menu buttons switch between pages within the same Home Assistant view. The selected page is stored in the `yad-page` URL parameter, so links, reloads and browser back/forward work; other query parameters such as `kiosk` are retained. The first page is the default. Screen, theme and background settings are shared across pages.
+These are YAD pages within the **same single Panel view**, not separate Home Assistant views. Menu buttons switch between them. The selected page is stored in the `yad-page` URL parameter, so links, reloads and browser back/forward work; other query parameters such as `kiosk` are retained. The first page in the list is the home page; moving another page to the top makes it home. Screen, theme and background settings are shared across pages.
+
+Set **Return to home page after** in **Pages & menu** to return automatically to the first page after the configured number of whole minutes. For example, `5` returns home after five minutes; `0` disables the timer (the default). The timer starts on a non-home page and restarts when switching pages; it measures time on the page rather than inactivity. The return preserves other URL parameters and replaces the current history entry. It does not run in the editor preview.
+
+![YAD kitchen page with its own widgets and Kitchen selected in the shared menu](https://raw.githubusercontent.com/therealcarnivor/YAD-Dashboard/main/docs/images/landscape-kitchen.png)
+
+In this example, selecting **Kitchen** changes the widgets and highlights Kitchen. If the timer is set to five minutes, YAD returns to **Home** after five minutes on Kitchen.
 
 Existing single-page cards and their external-link menus are unchanged until pages are enabled. In page mode, every menu widget shows the shared pages instead of its old external links. Widgets from other existing cards are not imported automatically; recreate them in the appropriate page before retiring those cards.
 
@@ -122,6 +134,7 @@ For YAML users, the equivalent structure is:
 
 ```yaml
 type: custom:yad-card
+return_home_minutes: 5
 shared_menu:
   direction: horizontal
   show_icons: true
@@ -193,7 +206,7 @@ widgets:
 
 **weather** — `entity` (required), `forecast_type` (`daily`, `hourly`, `twice_daily`), `forecast_count` (5), `show_details` (true).
 
-**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Set `day_position` to `top` (default), `left`, or `right` to position the day/date heading relative to its events. Set `time_position` to `below` (default) or `right` to move event times to the right of each row; locations remain under the event name when enabled. Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. If a calendar fails or takes over 15 seconds, the others still load, a warning is shown, and same-day cached events for the failed calendar are retained when available. Failed calendars are retried after a two-minute backoff; a timed-out request cannot be cancelled, so the same page will not issue another for that calendar until it settles. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
+**calendar** — `entities` (list of calendars; use `{ entity: calendar.x, name: "Family", icon: "mdi:home", color: "#hex" }` for overrides), `days` (7), `max_events` (8), `show_location` (false), `refresh_minutes` (10). Set `day_position` to `top` (default), `left`, or `right` to position the day/date heading relative to its events. Set `time_position` to `below` (default) or `right` to move event times to the right of each row; locations remain under the event name when enabled. Results are cached in the browser, so page reloads and other tabs within the refresh interval reuse them instead of fetching again. If a calendar fails or takes over 15 seconds, the others still load and same-day cached events for the failed calendar are retained when available. Errors are logged to the browser console instead of appearing on the dashboard. If no calendar data is available, the widget displays a neutral message. Failed calendars are retried after a two-minute backoff; a timed-out request cannot be cancelled, so the same page will not issue another for that calendar until it settles. `show_weekends` (true) controls whether Saturday/Sunday events appear; `highlight_weekends` (false) makes weekend headings and events distinct. Filtering runs before `max_events`. `show_calendar_badge` (true) shows the calendar's first initial inside a wider colour bar, or your configured icon. Set it to false to retain the narrow bar. Ongoing multi-day events remain visible on their first eligible weekday when weekends are hidden.
 
 **energy** — `power_entity` (current consumption in W or kW), `today_entity`, `solar_power_entity`, `solar_today_entity`, `battery_entity`, `cost_entity`, `show_graph` (true), `hours_to_show` (24). All optional — show only what you have.
 

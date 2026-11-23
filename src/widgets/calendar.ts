@@ -100,8 +100,7 @@ const fromStored = (events: StoredEvent[]): CalEvent[] =>
 @customElement("yad-widget-calendar")
 export class YadCalendar extends YadWidget<CalendarConfig> {
   @state() private _events?: CalEvent[];
-  @state() private _error?: string;
-  @state() private _warnings: string[] = [];
+  @state() private _unavailable = false;
   private _timer?: number;
   private _timerMinutes?: number;
   private _fetchedKey?: string;
@@ -152,8 +151,7 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     if (key !== this._fetchedKey) {
       this._fetchedKey = key;
       this._events = undefined;
-      this._error = undefined;
-      this._warnings = [];
+      this._unavailable = false;
       void this._fetch(true);
     }
     const minutes = this._refreshMinutes();
@@ -216,11 +214,10 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     const sameDay = cached?.day === day;
     if (sameDay && cached.events) {
       this._applyEvents(fromStored(cached.events));
-      this._warnings = cached.errors ?? [];
-      this._error = undefined;
+      this._unavailable = false;
     } else if (sameDay && cached.errors?.length) {
       this._events = undefined;
-      this._error = `Could not load calendars: ${cached.errors.join("; ")}`;
+      this._unavailable = true;
     }
     if (sameDay) {
       const fresh = cached.fetchedAt !== undefined && now - cached.fetchedAt < this._refreshMinutes() * 60_000 - FRESHNESS_SLACK_MS;
@@ -267,6 +264,7 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
         } catch (err) {
           const message = err && typeof err === "object" && "message" in err ? String(err.message) : String(err);
           errors.push(`${cal.entity}: ${message}`);
+          console.warn(`Could not load calendar ${cal.entity}:`, err);
           // A stale successful result may be displayed, but must be retried.
           fetchedAt[i] = null;
         }
@@ -277,8 +275,7 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
         if (results.some((events) => events !== null)) {
           const events = results.flatMap((events) => events ?? []);
           this._applyEvents(fromStored(events));
-          this._warnings = [...errors];
-          this._error = undefined;
+          this._unavailable = false;
           writeCache(cacheKey, { day, pendingSince: now, events, calendars: results, calendarFetchedAt: fetchedAt, errors });
         }
       }
@@ -290,11 +287,10 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
       });
       if (hasEvents) {
         this._applyEvents(fromStored(events));
-        this._warnings = errors;
-        this._error = undefined;
+        this._unavailable = false;
       } else {
         this._events = undefined;
-        this._error = `Could not load calendars: ${errors.join("; ")}`;
+        this._unavailable = true;
       }
       if (errors.length) this._scheduleRetry(FAILURE_BACKOFF_MS);
     } finally {
@@ -320,15 +316,12 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
   protected render() {
     const title = this.config.title ?? "Coming up";
     const header = html`<div class="head"><ha-icon icon="mdi:calendar-heart"></ha-icon>${title}</div>`;
-    if (this._error) return html`${header}<div class="empty"><ha-icon icon="mdi:calendar-alert"></ha-icon>${this._error}</div>`;
+    if (this._unavailable) return html`${header}<div class="empty">No calendar events available</div>`;
     if (!this._events) return html`${header}<div class="empty">Loading…</div>`;
 
     const today = startOfDay(new Date());
     const events = this._events.filter((e) => this._displayDay(e, today)).slice(0, this.config.max_events ?? 8);
-    const warning = this._warnings.length
-      ? html`<div class="calendar-warning" role="alert">Some calendars could not load: ${this._warnings.join("; ")}</div>`
-      : nothing;
-    if (!events.length) return html`${header}${warning}<div class="empty"><ha-icon icon="mdi:sofa-outline"></ha-icon>Nothing planned — enjoy the downtime</div>`;
+    if (!events.length) return html`${header}<div class="empty"><ha-icon icon="mdi:sofa-outline"></ha-icon>Nothing planned — enjoy the downtime</div>`;
 
     const groups = new Map<number, CalEvent[]>();
     for (const e of events) {
@@ -338,7 +331,7 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
     }
 
     return html`
-      ${header}${warning}
+      ${header}
       <div class="list scroll ${this.config.day_position === "left" || this.config.day_position === "right" ? `day-${this.config.day_position}` : "day-top"}">
         ${[...groups.entries()].map(([day, evs]) => {
           const weekend = !!this.config.highlight_weekends && [0, 6].includes(new Date(day).getDay());
@@ -373,11 +366,6 @@ export class YadCalendar extends YadWidget<CalendarConfig> {
   static styles = [
     widgetStyles,
     css`
-      .calendar-warning {
-        color: var(--h-muted);
-        font-size: 0.8rem;
-        overflow-wrap: anywhere;
-      }
       .list {
         flex: 1;
         display: flex;

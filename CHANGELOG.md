@@ -7,6 +7,14 @@ Add new entries under **Unreleased** as you work — they're moved under the new
 
 ## [Unreleased]
 
+### Added
+
+- Optional return-to-home timer for internal pages, configurable in Pages & menu: choose the number of minutes before returning to the first page, or set it to `0` to disable it.
+
+### Documentation
+
+- Clarified the single Home Assistant Panel-view setup and how YAD's internal pages and return-home timer work.
+
 ## [0.7.0] - 2026-11-22
 
 ### Added
